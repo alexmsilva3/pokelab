@@ -16,7 +16,7 @@ STARTER_SPECIES_IDS: Final[tuple[int, int, int]] = (1, 4, 7)  # Bulbasaur, Charm
 STARTER_LEVEL: Final[int] = 5
 LOCAL_INICIAL_ID: Final[str] = "pallet-town"
 
-TREINADORES_INICIAIS: Final[int] = 1
+TREINADORES_INICIAIS: Final[int] = 1  # concedido no registro
 ESTOQUE_INICIAL: Final[dict[str, int]] = {
     "poke-ball": 10,
     "potion": 5,
@@ -28,6 +28,18 @@ ESTOQUE_INICIAL: Final[dict[str, int]] = {
 # exp = (experiencia_base * nivel_derrotado / DIVISOR_EXP) / participantes
 DIVISOR_EXP: Final[int] = 7
 NIVEL_MAXIMO: Final[int] = 100
+
+# Experiencia do treinador: um terco do que a batalha gerou, antes da divisao
+# entre o time. A base e o total para que o tamanho do time nao vire imposto
+# sobre a carreira do treinador.
+FRACAO_EXP_TREINADOR: Final[float] = 1 / 3
+EXP_TREINADOR_BASE: Final[int] = 60  # exp total para o nivel n = base * n^2
+
+# Experiencia do laboratorio: cresce com o que o laboratorio produz.
+EXP_LAB_BASE: Final[int] = 500  # exp total para o nivel n = base * n^2
+EXP_LAB_POR_EXPEDICAO: Final[int] = 100
+BONUS_EXP_LAB_POR_DIFICULDADE: Final[float] = 0.2  # +20% por ponto de dificuldade
+EXP_LAB_POR_ENTREGA: Final[int] = 80  # por Pokemon entregue
 
 # Multiplicadores das curvas de crescimento, aplicados sobre n^3.
 CURVA_RAPIDA: Final[float] = 0.8
@@ -86,7 +98,32 @@ MULTIPLICADOR_BOLA: Final[dict[str, float]] = {
     "ultra-ball": 2.0,
 }
 
-# --- Laboratorio -----------------------------------------------------------
+# --- Treinador e laboratorio -----------------------------------------------
 
-SLOTS_EXPEDICAO_V1: Final[int] = 2
 TAMANHO_MAXIMO_TIME: Final[int] = 3
+# Time mais bagagem. O que sobra do time e quanto o treinador consegue capturar:
+# time grande vence mais e captura menos, time pequeno faz o contrario.
+CAPACIDADE_TOTAL_TREINADOR: Final[int] = 6
+
+# Nao ha limite fixo de expedicoes simultaneas: o gargalo sao os treinadores
+# disponiveis, e portanto o nivel do laboratorio.
+TREINADORES_POR_NIVEL_LABORATORIO: Final[int] = 1  # alem dos TREINADORES_INICIAIS
+
+# --- Entregas (SDD 4.8) ----------------------------------------------------
+
+ENTREGAS_DISPONIVEIS: Final[int] = 3  # pedidos na lista ao mesmo tempo
+ESPECIES_MAXIMAS_POR_ENTREGA: Final[int] = 3
+QUANTIDADE_MAXIMA_POR_ESPECIE: Final[int] = 3
+INTERVALO_REGERAR_ENTREGAS_MINUTOS: Final[int] = 15
+
+# Peso relativo no sorteio: especie ja capturada aparece mais que a so avistada,
+# para a lista ter pedidos atendiveis hoje e alguns que valem como objetivo.
+PESO_ESPECIE_CAPTURADA: Final[int] = 4
+PESO_ESPECIE_AVISTADA: Final[int] = 1
+
+MULTIPLICADOR_IDA_E_VOLTA: Final[float] = 2.0
+
+MOEDA_BASE: Final[int] = 25  # por Pokemon entregue
+MOEDA_POR_NIVEL: Final[int] = 5
+MINUTOS_PARA_BONUS_DISTANCIA: Final[int] = 30  # bonus = 1 + viagem / este valor
+EXP_TREINADOR_POR_ENTREGA: Final[int] = 150

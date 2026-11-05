@@ -1,6 +1,6 @@
 # PokeLab — Documento de Especificação e Condução (SDD)
 
-Versão 0.1 — 2026-11-05
+Versão 0.2 — 2026-11-05
 Responsável: Alex Silva (professor / arquiteto / operador)
 Método: Spec-Driven Development (especificação é a fonte da verdade; código é derivado dela)
 
@@ -19,14 +19,16 @@ A referência de loop é o sistema de frotas de *No Man's Sky*: despachar, esper
 - Lista de Pokémon do laboratório, com detalhe por indivíduo.
 - Treinadores NPC com time de até 3 Pokémon, atribuídos pelo professor.
 - Recorte de Kanto com 10 locais (Pallet até Cerulean) e progressão por desbloqueio.
-- Até 2 expedições simultâneas.
+- Expedições simultâneas limitadas pelos treinadores disponíveis (3 no laboratório nível 1).
 - Motor de expedição assíncrono com log narrativo de eventos.
-- Pokédex (vistos / capturados).
+- Central de Entregas: pedidos gerados pelo jogo, pagos em moeda e experiência.
+- Pokédex com registro de onde cada espécie foi avistada.
 - Mochila simples: Pokébolas, Poções, Revives.
+- Nível de laboratório, alimentado por expedições e entregas.
 
 ### 1.2 O que a v1 não entrega (registrado para não virar escopo acidental)
 
-Batalha interativa por turnos; troca entre jogadores; evolução por pedra/troca; criação/breeding (apesar do verbo "criar" na ideia original, aqui significa **treinar e desenvolver**, não reprodução); movimentos individuais e PP; status persistente de sono/paralisia; níveis de laboratório; som e animação; mobile nativo.
+Batalha interativa por turnos; troca entre jogadores; evolução por pedra/troca; criação/breeding (apesar do verbo "criar" na ideia original, aqui significa **treinar e desenvolver**, não reprodução); movimentos individuais e PP; status persistente de sono/paralisia; loja e gasto de moeda; mapa de distribuição de espécies por região (os dados são coletados na v1, a visualização vem depois); som e animação; mobile nativo.
 
 ### 1.3 Glossário
 
@@ -41,6 +43,9 @@ Batalha interativa por turnos; troca entre jogadores; evolução por pedra/troca
 | **Encontro** | Evento aleatório dentro de uma expedição: batalha selvagem, descoberta, item ou contratempo. |
 | **Relatório de campo** | Log de eventos gerado na resolução da expedição, apresentado ao professor no retorno. |
 | **Desbloqueio** | Efeito de uma expedição bem-sucedida: o local vira ponto de partida válido para novas expedições. |
+| **Entrega** | Pedido gerado pelo jogo: levar uma quantidade de Pokémon específicos até uma cidade. Ocupa um treinador, paga moeda e experiência. |
+| **Bagagem** | Espaço do treinador para Pokémon capturados em campo. Time e bagagem somam no máximo 6. |
+| **Moeda** | Recurso ganho em entregas. Na v1 é placar e reserva para a loja de uma versão futura. |
 
 ---
 
@@ -96,22 +101,26 @@ Cada expedição recebe um `seed` inteiro no momento do envio. Toda rolagem usa 
 Professor (1) ── (1) Laboratorio
                       │
                       ├── (N) PokemonInstancia ──> (1) PokemonEspecie [seed]
-                      ├── (N) Treinador ── (0..3) PokemonInstancia  [time]
+                      ├── (0..limite) Treinador ── (0..3) PokemonInstancia  [time]
                       ├── (N) ItemEstoque ──> (1) Item [seed]
                       ├── (N) LocalDesbloqueado ──> (1) Local [seed]
                       ├── (N) PokedexEntrada ──> (1) PokemonEspecie
-                      └── (0..2) Expedicao ── (N) ExpedicaoEvento
-                                   │
-                                   ├──> (1) Treinador
-                                   ├──> (1) Local (destino)
-                                   └──> (N) ExpedicaoItem [carga]
+                      │        └── (N) PokedexAvistamento ──> (1) Local
+                      ├── (N) Expedicao ── (N) ExpedicaoEvento
+                      │        ├──> (1) Treinador
+                      │        ├──> (1) Local (destino)
+                      │        └──> (N) ExpedicaoItem [carga]
+                      └── (N) Entrega ── (1..3) EntregaRequisito ──> (1) PokemonEspecie
+                               ├──> (1) Local (cidade destino)
+                               ├──> (0..1) Treinador
+                               └──> (N) PokemonInstancia [comprometidos]
 ```
 
 ### 3.1 Entidades de referência (seed, imutáveis em runtime)
 
 **PokemonEspecie** — `id` (1..151), `nome`, `tipo_primario`, `tipo_secundario`, `hp_base`, `ataque_base`, `defesa_base`, `ataque_especial_base`, `defesa_especial_base`, `velocidade_base`, `experiencia_base`, `taxa_captura`, `curva_crescimento`, `evolui_para_id`, `evolui_em_nivel`, `sprite_frente`, `sprite_costas`, `e_inicial`.
 
-**Local** — `id`, `nome`, `tipo` (`CIDADE` | `ROTA` | `MASMORRA`), `nivel_dificuldade` (1..10), `nivel_selvagem_min`, `nivel_selvagem_max`, `custo_travessia_minutos`, `encontros_base`, `vizinhos` (arestas do grafo), `e_inicial`.
+**Local** — `id`, `nome`, `tipo` (`CIDADE` | `ROTA` | `MASMORRA`), `nivel_dificuldade` (1..10), `nivel_selvagem_min`, `nivel_selvagem_max`, `custo_travessia_minutos`, `encontros_base`, `vizinhos` (arestas do grafo), `e_inicial`. Apenas locais do tipo `CIDADE` podem ser destino de entrega.
 
 **LocalEncontro** — `local_id`, `especie_id`, `peso` (probabilidade relativa), `nivel_min`, `nivel_max`.
 
@@ -121,11 +130,13 @@ Professor (1) ── (1) Laboratorio
 
 **Professor** — `id`, `usuario`, `senha_hash`, `nome_exibicao`, `criado_em`, `ultimo_acesso`.
 
-**Laboratorio** — `id`, `professor_id`, `nome`, `nivel` (fixo em 1 na v1), `slots_expedicao` (fixo em 2 na v1), `starters_concedidos` (bool).
+**Laboratorio** — `id`, `professor_id`, `nome`, `nivel`, `experiencia`, `moedas`, `starters_concedidos` (bool), `entregas_geradas_em` (carimbo do último sorteio da lista de entregas).
 
-**PokemonInstancia** — `id`, `laboratorio_id`, `especie_id`, `apelido`, `nivel`, `experiencia`, `hp_atual_pct` (0..100, desgaste pós-expedição), `treinador_id` (nulo = está no laboratório), `origem` (`INICIAL` | `CAPTURADO` | `EVOLUCAO`), `local_captura_id`, `capturado_em`.
+O nível do laboratório não é decorativo: ele define `limite_treinadores`, e é por aí que o professor expande a própria capacidade de operar. Não há `slots_expedicao` — o limite de expedições simultâneas é o número de treinadores disponíveis.
 
-**Treinador** — `id`, `laboratorio_id`, `nome`, `sprite`, `nivel`, `experiencia`, `status` (`DISPONIVEL` | `EM_EXPEDICAO` | `DESCANSANDO`), `expedicoes_concluidas`.
+**PokemonInstancia** — `id`, `laboratorio_id`, `especie_id`, `apelido`, `nivel`, `experiencia`, `hp_atual_pct` (0..100, desgaste pós-expedição), `treinador_id` (nulo = está no laboratório), `comprometido_entrega_id` (nulo = livre), `origem` (`INICIAL` | `CAPTURADO` | `EVOLUCAO`), `local_captura_id`, `capturado_em`.
+
+**Treinador** — `id`, `laboratorio_id`, `nome`, `avatar`, `nivel`, `experiencia`, `status` (`DISPONIVEL` | `EM_EXPEDICAO` | `EM_ENTREGA` | `DESCANSANDO`), `expedicoes_concluidas`, `entregas_concluidas`.
 
 **Expedicao** — `id`, `laboratorio_id`, `treinador_id`, `local_destino_id`, `local_origem_id`, `status` (`EM_CURSO` | `CONCLUIDA_SUCESSO` | `CONCLUIDA_FALHA` | `ABORTADA`), `seed`, `started_at`, `eta`, `resolvida_em`, `duracao_minutos`, `dificuldade_calculada`, `poder_time_calculado`.
 
@@ -133,24 +144,38 @@ Professor (1) ── (1) Laboratorio
 
 **ExpedicaoItem** — `expedicao_id`, `item_id`, `quantidade_levada`, `quantidade_consumida`.
 
+**Entrega** — `id`, `laboratorio_id`, `titulo`, `local_destino_id`, `status` (`DISPONIVEL` | `EM_CURSO` | `CONCLUIDA` | `DESCARTADA`), `treinador_id` (nulo enquanto disponível), `started_at`, `eta`, `resolvida_em`, `duracao_minutos`, `recompensa_moedas`, `recompensa_exp_laboratorio`, `recompensa_exp_treinador`, `gerada_em`.
+
+**EntregaRequisito** — `entrega_id`, `especie_id`, `quantidade`. No máximo três por entrega, espécies distintas.
+
 **ItemEstoque** — `laboratorio_id`, `item_id`, `quantidade`.
 
 **LocalDesbloqueado** — `laboratorio_id`, `local_id`, `desbloqueado_em`.
 
 **PokedexEntrada** — `laboratorio_id`, `especie_id`, `visto` (bool), `capturado` (bool), `primeiro_visto_em`.
 
+**PokedexAvistamento** — `laboratorio_id`, `especie_id`, `local_id`, `primeiro_visto_em`, `vezes_visto`. É o registro de **onde** cada espécie apareceu, descarregado pelo treinador ao fim de cada expedição. A v1 só coleta; a visualização no mapa, que permitiria ao professor escolher um destino sabendo o que mora lá, vem numa versão posterior (questão 23).
+
 ### 3.3 Invariantes do domínio
 
 1. Um treinador tem no máximo 3 Pokémon no time.
 2. Um Pokémon pertence a no máximo um treinador por vez.
-3. Um treinador em `EM_EXPEDICAO` não pode ter o time alterado nem ser enviado a outra expedição.
-4. Pokémon alocados a um treinador em expedição não podem ser desatribuídos.
-5. Um laboratório tem no máximo `slots_expedicao` (2) expedições com status `EM_CURSO`.
+3. Um treinador ocupado — `EM_EXPEDICAO` ou `EM_ENTREGA` — não pode ter o time alterado nem receber nova missão.
+4. Pokémon alocados a um treinador ocupado não podem ser desatribuídos.
+5. Um laboratório tem no máximo `limite_treinadores` treinadores, derivado do nível do laboratório.
 6. O destino de uma expedição deve ser vizinho de um local desbloqueado — ou o próprio laboratório, para a primeira.
 7. Nenhum Pokémon ultrapassa o nível 100.
-8. Uma expedição só é resolvida uma vez (idempotência garantida por lock + checagem de status).
+8. Uma expedição ou entrega só é resolvida uma vez (idempotência garantida por lock + checagem de status).
 9. O estoque de itens nunca fica negativo; a carga é debitada no envio, não no retorno.
 10. Os starters são concedidos exatamente uma vez por laboratório.
+11. Um treinador carrega no máximo 6 Pokémon: time mais bagagem. Atingido o limite, ele não captura mais — apenas registra na Pokédex.
+12. Uma entrega parte sempre do laboratório, porque os Pokémon pedidos estão lá.
+13. Uma entrega pede no máximo 3 espécies distintas.
+14. Um Pokémon comprometido com uma entrega não pode entrar em time, em expedição nem em outra entrega.
+15. A lista de entregas só é regerada após `INTERVALO_REGERAR_ENTREGAS` desde o último sorteio.
+16. O destino de uma entrega é sempre um local do tipo `CIDADE` já desbloqueado.
+
+Não existe mais limite fixo de expedições simultâneas: o gargalo é o número de treinadores disponíveis, e portanto o nível do laboratório.
 
 ---
 
@@ -176,6 +201,37 @@ lenta         = 1.25 * n^3
 ```
 
 A evolução dispara na resolução da expedição quando `nivel >= evolui_em_nivel` e a espécie tem `evolui_para_id`. Gera evento `EVOLUCAO` no relatório.
+
+**Experiência do treinador.** A cada batalha vencida, o treinador leva um terço da experiência que a batalha gerou, antes da divisão entre o time:
+
+```
+exp_treinador = (experiencia_base_derrotado * nivel_derrotado / DIVISOR_EXP) / 3
+```
+
+Tomar como base a experiência total, e não a parcela de cada Pokémon, faz o treinador progredir no mesmo ritmo quer leve um Pokémon ou três. O tamanho do time é escolha tática do professor; não deveria também ser um imposto sobre a carreira do treinador.
+
+A curva do treinador é quadrática, bem mais lenta que a de um Pokémon:
+
+```
+exp_total_para_nivel(n) = EXP_TREINADOR_BASE * n^2
+```
+
+**Experiência do laboratório.** Cresce com o que o laboratório produz, não com o que acontece em campo:
+
+```
+expedição bem-sucedida: EXP_LAB_POR_EXPEDICAO * (1 + nivel_dificuldade_local * 0.2)
+entrega concluída:      EXP_LAB_POR_ENTREGA * total_de_pokemon_entregues
+
+exp_total_para_nivel(n) = EXP_LAB_BASE * n^2
+```
+
+Subir de nível aumenta a capacidade de treinadores:
+
+```
+limite_treinadores = TREINADORES_INICIAIS + (nivel_laboratorio - 1)
+```
+
+Com `TREINADORES_INICIAIS = 3`, o laboratório nível 1 comporta três treinadores, e cada nível acrescenta um. Como o limite de expedições simultâneas é o número de treinadores livres, o nível do laboratório é **o** eixo de progressão do professor.
 
 ### 4.2 Poder do time e dificuldade do local
 
@@ -232,10 +288,11 @@ Para cada encontro, sorteia-se a espécie pelo `peso` da tabela `LocalEncontro` 
 
 ### 4.5 Captura
 
-Só há tentativa de captura após vitória, e só se restar Pokébola na carga e slot de captura.
+Só há tentativa de captura após vitória, e só se restar Pokébola na carga e espaço na bagagem.
 
 ```
-slots_captura = min(pokebolas_na_carga, 1 + nivel_treinador // 5)
+capacidade_bagagem = CAPACIDADE_TOTAL_TREINADOR - tamanho_do_time
+slots_captura      = min(pokebolas_na_carga, capacidade_bagagem)
 
 p_captura = clamp(
     (taxa_captura / 255)
@@ -247,7 +304,11 @@ p_captura = clamp(
 
 Multiplicadores: Pokébola 1.0, Great Ball 1.5, Ultra Ball 2.0. Sucesso gera `CAPTURA`, consome a bola, cria a `PokemonInstancia` no laboratório ao fim da expedição e marca a Pokédex. Falha gera `CAPTURA_FALHA` e consome a bola.
 
-**O número de Pokémon capturáveis por expedição é limitado por `slots_captura`**, exatamente como pedido: nível do treinador mais Pokébolas na mochila.
+**O número de Pokémon capturáveis por expedição é limitado por `slots_captura`**: espaço livre na bagagem e Pokébolas na mochila. Com `CAPACIDADE_TOTAL_TREINADOR = 6`, um treinador com time cheio traz até 3 capturas; um treinador com um único Pokémon traz até 5.
+
+Esse é um trade-off deliberado e não um efeito colateral. Time grande vence mais encontros e captura menos; time pequeno arrisca a expedição inteira em troca de capacidade. O professor escolhe entre render experiência e render Pokémon, e a escolha é dele a cada despacho.
+
+Atingida a capacidade, o treinador para de capturar mas **continua registrando** na Pokédex tudo que enfrenta. Uma expedição com a bagagem cheia ainda produz conhecimento.
 
 ### 4.6 Descoberta e desbloqueio
 
@@ -258,6 +319,41 @@ Uma expedição `CONCLUIDA_SUCESSO` grava `LocalDesbloqueado` para o destino. A 
 ### 4.7 Pós-expedição
 
 O treinador entra em `DESCANSANDO` por um período proporcional ao desgaste e depois volta a `DISPONIVEL`. Pokémon retornam com o `hp_atual_pct` reduzido, recuperado passivamente ao longo do tempo enquanto estiverem no laboratório.
+
+**Descarga da Pokédex.** Ao retornar, o treinador despeja no laboratório tudo que registrou em campo. Cada espécie enfrentada ou capturada vira ou atualiza um `PokedexAvistamento` ligando espécie e local. É assim que o laboratório aprende **onde** cada Pokémon vive — conhecimento que a v1 acumula e uma versão futura exibe no mapa (questão 23).
+
+A consequência de design importa: um professor que nunca despachou ninguém para Mt. Moon não sabe que existe Clefairy lá. O mapa não nasce preenchido; ele é preenchido pelo trabalho dos treinadores.
+
+### 4.8 Entregas
+
+A Central de Entregas é a fonte de moeda do jogo e o segundo uso para um treinador.
+
+**Geração.** O jogo mantém `ENTREGAS_DISPONIVEIS` pedidos na lista. Cada pedido sorteia de uma a três espécies distintas e uma quantidade de 1 a `QUANTIDADE_MAXIMA_POR_ESPECIE` para cada. As espécies saem do que o professor já **viu**, com peso maior para o que ele já **capturou** — assim a lista tem pedidos atendíveis hoje e alguns que valem como objetivo. O destino é uma cidade já desbloqueada.
+
+**Regeração.** O professor pode descartar a lista e sortear outra, mas só a cada `INTERVALO_REGERAR_ENTREGAS` (15 minutos). O intervalo existe para que a escolha de qual entrega aceitar seja uma decisão, e não um botão de sorte girado até sair o pedido conveniente.
+
+**Aceite.** Exige os Pokémon pedidos disponíveis no laboratório — não em time, não em expedição, não comprometidos com outra entrega — e um treinador disponível. No aceite, os Pokémon ficam `comprometido_entrega_id` e o treinador vai para `EM_ENTREGA`.
+
+**Duração.** A entrega parte sempre do laboratório, porque é lá que os Pokémon estão. Não há exploração nem encontro: é só estrada, ida e volta.
+
+```
+duracao_entrega = tempo_viagem(laboratorio, cidade_destino)
+                * MULTIPLICADOR_IDA_E_VOLTA
+                * (1 - min(nivel_treinador * 0.02, 0.40))
+                / EXPEDITION_TIME_SCALE
+```
+
+**Conclusão.** Os Pokémon entregues saem do laboratório **em definitivo** — foi isso que se vendeu. Em troca:
+
+```
+moedas = soma, por Pokémon entregue, de
+         (MOEDA_BASE + nivel_pokemon * MOEDA_POR_NIVEL) * (1 + tempo_viagem / 30)
+
+exp_laboratorio = EXP_LAB_POR_ENTREGA * total_entregue
+exp_treinador   = EXP_TREINADOR_POR_ENTREGA
+```
+
+Entregar longe paga mais. Entregar um Pokémon de nível alto paga mais — e é uma decisão de verdade, porque esse Pokémon poderia estar num time.
 
 ---
 
@@ -355,7 +451,7 @@ GET    /pokedex                         -> 151 com visto/capturado
 
 ## 6. Fases do projeto
 
-Dez fases. Cada uma tem um entregável demonstrável e um critério de pronto objetivo. Fases com o mesmo número de ordem podem correr em paralelo.
+Onze fases. Cada uma tem um entregável demonstrável e um critério de pronto objetivo. Fases com o mesmo número de ordem podem correr em paralelo.
 
 ---
 
@@ -413,7 +509,7 @@ Dez nós, uma ramificação precoce (Route 22 como armadilha de dificuldade) e p
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
-| 2.1 | Modelo `Professor` e `Laboratorio`, migração | `pokelab-api` | — |
+| 2.1 | Modelos `Professor` e `Laboratorio` (com nível, experiência, moedas e `limite_treinadores` derivado), migração | `pokelab-api` | — |
 | 2.2 | `POST /auth/register` e `POST /auth/login` com hash de senha e token de sessão (JWT simples, expiração curta) | `pokelab-api` | `pokelab-api-conventions` |
 | 2.3 | Dependência de autenticação e escopo por laboratório em todas as rotas | `pokelab-api` | `pokelab-api-conventions` |
 | 2.4 | Concessão dos 3 starters no registro (Bulbasaur, Charmander, Squirtle, nível 5) | `pokelab-domain` | `pokelab-domain-rules` |
@@ -450,14 +546,15 @@ Dez nós, uma ramificação precoce (Route 22 como armadilha de dificuldade) e p
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
 | 4.1 | Modelo `Treinador`, migração, gerador de nome e avatar (ver questão 16) | `pokelab-domain` | `pokelab-domain-rules` |
-| 4.2 | `POST /trainers` — recrutamento (custo e limite definidos em `balance.py`) | `pokelab-api` | — |
+| 4.2 | `POST /trainers` — recrutamento, respeitando `limite_treinadores` do laboratório (invariante 5) | `pokelab-api` | — |
 | 4.3 | `PUT /trainers/{id}/team` com validação dos invariantes 1–4 da seção 3.3 | `pokelab-domain` + `pokelab-api` | `pokelab-domain-rules` |
-| 4.4 | Nível e EXP do treinador: ganho por expedição concluída (contrato definido aqui, aplicado na Fase 7) | `pokelab-domain` | `pokelab-domain-rules` |
-| 4.5 | Tela Treinadores: lista com status, cartão por treinador | `pokelab-frontend` | `pokelab-ui-kit` |
-| 4.6 | Montagem de time por seleção em lista (sem drag-and-drop), com prévia de poder do time | `pokelab-frontend` | `pokelab-ui-kit` |
-| 4.7 | Testes dos invariantes: 4º Pokémon rejeitado, Pokémon em dois times rejeitado, time travado em expedição | `pokelab-test` | — |
+| 4.4 | Nível e EXP do treinador: curva quadrática e ganho de um terço por batalha (contrato definido aqui, aplicado na Fase 7) | `pokelab-domain` | `pokelab-domain-rules` |
+| 4.5 | Nível e EXP do laboratório, e `limite_treinadores` derivado dele | `pokelab-domain` + `pokelab-api` | `pokelab-domain-rules` |
+| 4.6 | Tela Treinadores: lista com status, cartão por treinador, capacidade de bagagem visível | `pokelab-frontend` | `pokelab-ui-kit` |
+| 4.7 | Montagem de time por seleção em lista (sem drag-and-drop), com prévia de poder do time e de quantas capturas a bagagem comporta | `pokelab-frontend` | `pokelab-ui-kit` |
+| 4.8 | Testes dos invariantes: 4º Pokémon no time rejeitado, Pokémon em dois times rejeitado, time travado em expedição, 4º treinador rejeitado no laboratório nível 1 | `pokelab-test` | — |
 
-**Pronto quando:** é possível recrutar um treinador, montar um time de 3 e ver o poder resultante.
+**Pronto quando:** é possível recrutar até três treinadores, montar um time de 3, ver o poder resultante e a capacidade de bagagem que sobra.
 
 ---
 
@@ -484,15 +581,15 @@ Dez nós, uma ramificação precoce (Route 22 como armadilha de dificuldade) e p
 |---|---|---|---|
 | 6.1 | Modelos `Expedicao`, `ExpedicaoItem`, `ExpedicaoEvento` | `pokelab-api` | — |
 | 6.2 | `game/expedition.py`: cálculo de duração (4.3), dificuldade e poder do time (4.2) | `pokelab-domain` | `pokelab-domain-rules` |
-| 6.3 | `POST /expeditions`: valida invariantes 3, 5, 6 e 9, debita carga, grava `seed`, `started_at` e `eta` | `pokelab-api` | `pokelab-api-conventions` |
+| 6.3 | `POST /expeditions`: valida invariantes 3, 6 e 9, debita carga, grava `seed`, `started_at` e `eta`. O limite de expedições simultâneas é o número de treinadores disponíveis, não uma constante | `pokelab-api` | `pokelab-api-conventions` |
 | 6.4 | `GET /expeditions` com tempo restante calculado no servidor | `pokelab-api` | — |
 | 6.5 | `DELETE /expeditions/{id}`: aborto sem recompensa, itens não devolvidos | `pokelab-api` | — |
 | 6.6 | `EXPEDITION_TIME_SCALE` via configuração (ADR-004) | `pokelab-infra` | — |
 | 6.7 | Tela de despacho: escolher treinador, destino, carga; prévia de duração, dificuldade e chance estimada | `pokelab-frontend` | `pokelab-ui-kit` |
 | 6.8 | Painel de expedições ativas com contador regressivo e polling leve | `pokelab-frontend` | `pokelab-ui-kit` |
-| 6.9 | Testes: 3ª expedição simultânea rejeitada; treinador ocupado rejeitado; estoque debitado corretamente | `pokelab-test` | — |
+| 6.9 | Testes: expedição sem treinador livre rejeitada; treinador ocupado rejeitado; estoque debitado corretamente; três treinadores rendem três expedições simultâneas | `pokelab-test` | — |
 
-**Pronto quando:** duas expedições correm simultaneamente, com contador regressivo correto após recarregar a página.
+**Pronto quando:** três expedições correm simultaneamente — uma por treinador —, com contador regressivo correto após recarregar a página, e a quarta é recusada por falta de treinador.
 
 ---
 
@@ -510,60 +607,90 @@ Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqu
 | 7.5 | `game/expedition.py::resolve()`: loop de encontros, consumo de itens, desgaste, falha por 3 derrotas, geração ordenada de eventos | `pokelab-domain` | `pokelab-domain-rules` |
 | 7.6 | Textos narrativos dos eventos em português, por tipo, com interpolação de nomes e números | `pokelab-domain` | `pokelab-ui-kit` |
 | 7.7 | Resolução preguiçosa idempotente no `GET /expeditions/{id}`: transação com `SELECT ... FOR UPDATE` e checagem de status | `pokelab-api` | `pokelab-api-conventions` |
-| 7.8 | `POST /expeditions/{id}/claim`: cria Pokémon capturados, aplica EXP e evoluções, marca Pokédex, desbloqueia o local, libera o treinador | `pokelab-api` | `pokelab-domain-rules` |
-| 7.9 | Tela de relatório de campo: timeline de eventos, resumo de capturas, EXP e itens consumidos | `pokelab-frontend` | `pokelab-ui-kit` |
-| 7.10 | Testes determinísticos por seed: mesma entrada produz exatamente o mesmo relatório | `pokelab-test` | — |
-| 7.11 | **Recompensa de itens**: evento `ITEM` na resolução, repondo Pokébolas e curas conforme a dificuldade do local | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.12 | Testes de idempotência: duas chamadas concorrentes resolvem uma única vez | `pokelab-test` | — |
+| 7.8 | Capacidade de bagagem: a captura para em `6 - tamanho_do_time`, e a Pokédex continua registrando | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.9 | EXP do treinador (um terço por batalha) e do laboratório (por expedição bem-sucedida), com subida de nível | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.10 | Descarga da Pokédex: `PokedexAvistamento` por espécie e local ao fim da expedição | `pokelab-domain` + `pokelab-api` | `pokelab-domain-rules` |
+| 7.11 | `POST /expeditions/{id}/claim`: cria Pokémon capturados, aplica EXP de Pokémon, treinador e laboratório, resolve evoluções, grava avistamentos, desbloqueia o local, libera o treinador | `pokelab-api` | `pokelab-domain-rules` |
+| 7.12 | **Recompensa de itens**: evento `ITEM` na resolução, repondo Pokébolas e curas conforme a dificuldade do local | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.13 | Tela de relatório de campo: timeline de eventos, resumo de capturas, EXP ganha pelos três níveis e itens consumidos | `pokelab-frontend` | `pokelab-ui-kit` |
+| 7.14 | Testes determinísticos por seed: mesma entrada produz exatamente o mesmo relatório | `pokelab-test` | — |
+| 7.15 | Testes de idempotência: duas chamadas concorrentes resolvem uma única vez | `pokelab-test` | — |
+| 7.16 | Teste de bagagem cheia: treinador com time de 3 captura no máximo 3 e segue registrando avistamentos | `pokelab-test` | — |
 
-**Pronto quando:** uma expedição enviada retorna com relatório coerente, os Pokémon ganham nível, pelo menos um é capturado e o local é desbloqueado.
+**Pronto quando:** uma expedição enviada retorna com relatório coerente, os Pokémon ganham nível, o treinador e o laboratório também, pelo menos um Pokémon é capturado, os avistamentos entram na Pokédex e o local é desbloqueado.
 
 ---
 
-### Fase 8 — Calibragem
+### Fase 8 — Central de Entregas
+*A segunda ocupação de um treinador, e a origem da moeda.*
+
+Depende da Fase 7: a entrega só faz sentido quando existem Pokémon capturados para entregar.
+
+| # | Tarefa | Agente | Skills |
+|---|---|---|---|
+| 8.1 | Modelos `Entrega` e `EntregaRequisito`, campo `comprometido_entrega_id` em `PokemonInstancia`, migração | `pokelab-api` | — |
+| 8.2 | `game/delivery.py`: gerador de pedidos — 1 a 3 espécies distintas sorteadas do que o professor já viu, com peso maior para o já capturado, destino entre as cidades desbloqueadas | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.3 | Duração da entrega (só travessia, ida e volta) e cálculo das recompensas em moeda e experiência | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.4 | `GET /deliveries`: disponíveis, em curso e histórico, com o motivo de cada pedido inviável hoje | `pokelab-api` | `pokelab-api-conventions` |
+| 8.5 | `POST /deliveries/refresh`: regera a lista respeitando o intervalo de 15 minutos (invariante 15), devolvendo quanto falta quando recusa | `pokelab-api` | `pokelab-api-conventions` |
+| 8.6 | `POST /deliveries/{id}/accept`: valida Pokémon disponíveis e treinador livre, compromete os Pokémon, ocupa o treinador, grava `eta` | `pokelab-api` | `pokelab-domain-rules` |
+| 8.7 | `POST /deliveries/{id}/claim`: remove em definitivo os Pokémon entregues, credita moedas e experiência, libera o treinador | `pokelab-api` | `pokelab-domain-rules` |
+| 8.8 | Resolução preguiçosa idempotente, no mesmo padrão da expedição (Artigo VII) | `pokelab-api` | `pokelab-api-conventions` |
+| 8.9 | Tela Central de Entregas: pedidos com requisito, destino, duração estimada e recompensa; botão de regerar mostrando o tempo restante | `pokelab-frontend` | `pokelab-ui-kit` |
+| 8.10 | Confirmação explícita no aceite, nomeando quais Pokémon saem do laboratório para sempre | `pokelab-frontend` | `pokelab-ui-kit` |
+| 8.11 | Testes: pedido com 4 espécies rejeitado na geração; aceite sem Pokémon suficientes rejeitado; Pokémon comprometido fora de time e de expedição; regerar antes de 15 minutos recusado | `pokelab-test` | — |
+
+**Pronto quando:** o professor aceita um pedido, perde os Pokémon, ganha moeda e experiência de laboratório, e o treinador fica indisponível durante a viagem.
+
+---
+
+### Fase 9 — Calibragem
 *Transformar números arbitrários em curva de progressão defensável.*
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
-| 8.1 | `tools/simulate_balance.py`: Monte Carlo de N expedições variando nível de time, treinador e local | `pokelab-balance` | `pokelab-domain-rules` |
-| 8.2 | Relatório de curvas: taxa de sucesso, capturas por hora, EXP por hora, tempo até desbloquear Kanto inteiro | `pokelab-balance` | `dataviz` |
-| 8.3 | Ajustar `balance.py` para as metas: ~70% de sucesso com time adequado, ~25% com time subnivelado | `pokelab-balance` | `pokelab-domain-rules` |
-| 8.6 | Calibrar `custo_travessia_minutos` e `encontros_base` por local: duração percebida, rendimento por hora e o ganho real de desbloquear cada local | `pokelab-balance` | `pokelab-data-seed` |
-| 8.4 | Testes de regressão de balanceamento (faixas aceitáveis, não valores exatos) | `pokelab-test` | — |
-| 8.5 | Calibrar a economia de itens (tarefa 7.11) para que o estoque não seque nem acumule | `pokelab-balance` | `pokelab-domain-rules` |
+| 9.1 | `tools/simulate_balance.py`: Monte Carlo de N expedições variando nível de time, treinador e local | `pokelab-balance` | `pokelab-domain-rules` |
+| 9.2 | Relatório de curvas: taxa de sucesso, capturas por hora, EXP por hora, tempo até desbloquear o mapa inteiro | `pokelab-balance` | `dataviz` |
+| 9.3 | Ajustar `balance.py` para as metas: ~70% de sucesso com time adequado, ~25% com time subnivelado | `pokelab-balance` | `pokelab-domain-rules` |
+| 9.4 | Calibrar `custo_travessia_minutos` e `encontros_base` por local: duração percebida, rendimento por hora e o ganho real de desbloquear cada local | `pokelab-balance` | `pokelab-data-seed` |
+| 9.5 | Calibrar a economia de itens (tarefa 7.12) para que o estoque não seque nem acumule | `pokelab-balance` | `pokelab-domain-rules` |
+| 9.6 | Calibrar a curva de nível do laboratório: quantas expedições e entregas até o 4º treinador, e se o ritmo acompanha o acesso a locais mais difíceis | `pokelab-balance` | `pokelab-domain-rules` |
+| 9.7 | Calibrar a economia de entregas: moeda por hora, e se entregar um Pokémon de nível alto compensa perdê-lo | `pokelab-balance` | `pokelab-domain-rules` |
+| 9.8 | Testes de regressão de balanceamento (faixas aceitáveis, não valores exatos) | `pokelab-test` | — |
 
 **Pronto quando:** a simulação mostra progressão sem travas nem trivialidade, e as faixas estão fixadas em teste.
 
 ---
 
-### Fase 9 — Acabamento
+### Fase 10 — Acabamento
 *Tornar jogável de verdade.*
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
-| 9.1 | Estados de carregamento, erro e vazio em todas as telas | `pokelab-frontend` | `pokelab-ui-kit` |
-| 9.2 | Notificação no app quando uma expedição retorna | `pokelab-frontend` | `pokelab-ui-kit` |
-| 9.3 | Responsividade mínima e tema claro/escuro | `pokelab-frontend` | `pokelab-ui-kit` |
-| 9.4 | Tratamento uniforme de erro da API (código, mensagem em português, correlação) | `pokelab-api` | `pokelab-api-conventions` |
-| 9.5 | Teste de ponta a ponta do loop completo: registrar → montar time → expedir → relatório → desbloquear | `pokelab-test` | — |
-| 9.6 | Revisão de segurança: escopo por laboratório em toda rota, sem IDOR | `pokelab-test` | `security-review` |
-| 9.7 | **Revisão de escopo de evolução** (questão 17): decidir o destino das 100 espécies que não evoluem por nível — pedra, troca e amizade. Levantar quantas estão afetadas por grupo, o custo de cada mecânica e o impacto na Pokédex, e registrar a decisão em ADR | `pokelab-architect` | `pokelab-domain-rules` |
+| 10.1 | Estados de carregamento, erro e vazio em todas as telas | `pokelab-frontend` | `pokelab-ui-kit` |
+| 10.2 | Notificação no app quando uma expedição ou entrega retorna | `pokelab-frontend` | `pokelab-ui-kit` |
+| 10.3 | Responsividade mínima e tema claro/escuro | `pokelab-frontend` | `pokelab-ui-kit` |
+| 10.4 | Tratamento uniforme de erro da API (código, mensagem em português, correlação) | `pokelab-api` | `pokelab-api-conventions` |
+| 10.5 | Teste de ponta a ponta do loop completo: registrar → montar time → expedir → relatório → desbloquear → entregar | `pokelab-test` | — |
+| 10.6 | Revisão de segurança: escopo por laboratório em toda rota, sem IDOR | `pokelab-test` | `security-review` |
+| 10.7 | **Revisão de escopo de evolução** (questão 17): decidir o destino das 100 espécies que não evoluem por nível — pedra, troca e amizade. Levantar quantas estão afetadas por grupo, o custo de cada mecânica e o impacto na Pokédex, e registrar a decisão em ADR | `pokelab-architect` | `pokelab-domain-rules` |
+| 10.8 | **Revisão do destino da moeda** (questão 19): sem loja, a moeda é placar. Decidir se entra uma loja, se ela paga o recrutamento, ou se o recurso sai da v1 | `pokelab-architect` | `pokelab-domain-rules` |
 
-**Pronto quando:** uma pessoa que nunca viu o projeto completa o loop sem instrução, e a decisão sobre evolução pós-v1 está registrada.
+**Pronto quando:** uma pessoa que nunca viu o projeto completa o loop sem instrução, e as decisões adiadas estão registradas em ADR.
 
 ---
 
-### Fase 10 — Implantação
+### Fase 11 — Implantação
 *Colocar de pé no servidor.*
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
-| 10.1 | Dockerfiles de produção (multi-stage) para `api` e `web` | `pokelab-infra` | — |
-| 10.2 | Pipeline GitHub Actions no padrão estabelecido: lint → test → build → Artifact Registry via WIF → deploy SSH com `docker compose` | `pokelab-infra` | — |
-| 10.3 | `docker-compose.yml` do servidor com `env_file` separado | `pokelab-infra` | — |
-| 10.4 | Backup do Postgres e procedimento de restauração | `pokelab-infra` | `operations:runbook` |
-| 10.5 | Logs estruturados e healthchecks nos serviços | `pokelab-infra` | — |
-| 10.6 | Runbook de operação: deploy, rollback, reseed, inspeção de expedição travada | `pokelab-infra` | `operations:runbook` |
+| 11.1 | Dockerfiles de produção (multi-stage) para `api` e `web` | `pokelab-infra` | — |
+| 11.2 | Pipeline GitHub Actions no padrão estabelecido: lint → test → build → Artifact Registry via WIF → deploy SSH com `docker compose` | `pokelab-infra` | — |
+| 11.3 | `docker-compose.yml` do servidor com `env_file` separado | `pokelab-infra` | — |
+| 11.4 | Backup do Postgres e procedimento de restauração | `pokelab-infra` | `operations:runbook` |
+| 11.5 | Logs estruturados e healthchecks nos serviços | `pokelab-infra` | — |
+| 11.6 | Runbook de operação: deploy, rollback, reseed, inspeção de expedição ou entrega travada | `pokelab-infra` | `operations:runbook` |
 
 **Pronto quando:** `git push` na branch principal publica a versão e o runbook cobre rollback.
 
@@ -573,11 +700,11 @@ Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqu
 
 ```
 Fase 0 ──> Fase 1 ──┬──> Fase 2 ──> Fase 3 ──┐
-                    │                         ├──> Fase 6 ──> Fase 7 ──> Fase 8 ──> Fase 9 ──> Fase 10
+                    │                         ├──> Fase 6 ──> Fase 7 ──> Fase 8 ──> Fase 9 ──> Fase 10 ──> Fase 11
                     └──> Fase 4 ──> Fase 5 ──┘
 ```
 
-Fases 3, 4 e 5 podem correr em paralelo depois da Fase 2. A Fase 7 é o gargalo: nada depois dela faz sentido antes dela estar correta.
+Fases 3, 4 e 5 podem correr em paralelo depois da Fase 2. A Fase 7 é o gargalo: nada depois dela faz sentido antes dela estar correta — inclusive a Fase 8, que precisa de Pokémon capturados para ter o que entregar.
 
 ---
 
@@ -651,9 +778,9 @@ Pontos que não bloqueiam o início, mas precisam de decisão antes das fases in
 2. ~~Laboratórios por conta.~~ **Resolvido 2026-11-05: um por conta na v1.** Quando outras regiões entrarem, cada uma ganha seu laboratório. O modelo já suporta: `Laboratorio` tem `professor_id`, então a relação é 1:N desde o início e passar de um para vários não exige migração — apenas remover a validação de unicidade.
 
 **Antes da Fase 4**
-3. Como se recruta um treinador? Gratuito e ilimitado, por custo em moeda do jogo, ou recompensa de expedição?
-4. Treinador pode ser perdido ou demitido? Há consequência numa falha grave?
-5. Nome e sprite dos treinadores: gerados aleatoriamente de uma lista, ou nomeados pelo professor?
+3. Como se recruta um treinador dentro do `limite_treinadores`? Gratuito, por custo em moeda, ou recompensa de expedição? **Pendente de você.** O limite já está decidido (3 no nível 1, mais um por nível), mas o custo de preencher um slot não.
+4. Treinador pode ser perdido ou demitido? Há consequência numa falha grave? Com o limite agora atrelado ao nível do laboratório, demitir para trocar passa a ser uma jogada válida — e perder um treinador, uma perda séria.
+5. Nome e avatar dos treinadores: gerados aleatoriamente de uma lista, ou nomeados pelo professor?
 
 **Antes da Fase 5**
 6. ~~Recorte do mapa.~~ **Resolvido 2026-11-05: 10 locais, Pallet até Cerulean (Fase 1).**
@@ -663,11 +790,20 @@ Pontos que não bloqueiam o início, mas precisam de decisão antes das fases in
 8. Pokémon pode ser derrotado permanentemente, ou só fica machucado? (Assumi: só machucado, `hp_atual_pct` baixo.)
 9. Pokémon capturado vem com o nível que tinha em campo, ou normalizado?
 10. Pokémon atribuído a um treinador evolui durante a expedição, ou só no laboratório?
-11. Há limite de capacidade do laboratório? Um sistema de "PC do Bill" faz sentido, ou armazenamento infinito na v1?
+11. Há limite de capacidade do laboratório **para Pokémon**? O limite de treinadores já existe; o de Pokémon guardados, não. Armazenamento infinito na v1, ou um "PC do Bill"? Note que as entregas passaram a ser um dreno natural de Pokémon excedentes, o que torna o limite menos urgente.
 
 **Antes da Fase 8**
+19. Para que serve a moeda? As entregas a produzem, mas nada a consome. Sem loja, ela é placar. As opções são abrir uma loja de itens na v1, usá-la como custo de recrutamento (resolvendo também a questão 3), ou aceitar que na v1 ela só conta pontos. **Adiado para a tarefa 10.8.**
+20. Quantas entregas ficam disponíveis na lista ao mesmo tempo? Propus três. Com uma só, o botão de regerar vira obrigatório e os 15 minutos pesam; com cinco, quase sempre há algo atendível e a escolha perde tensão.
+21. Entrega aceita pode ser cancelada? E a lista disponível expira sozinha com o tempo, ou fica parada até o professor regerar?
+22. Qual o teto de quantidade por espécie num pedido? Propus 3. "Enviar 3 Rattata" é rotina; "enviar 3 Dragonite" é inviável, e o gerador precisa saber a diferença — provavelmente ponderando pela taxa de captura da espécie.
+
+**Antes da Fase 9**
 12. Qual sessão alvo? Expedições de 5 a 30 minutos pressupõem que você volta algumas vezes por dia. Se a intenção for uma sessão longa única, as durações precisam encolher.
-13. Existe moeda? Sem economia, itens só vêm de expedição; com economia, aparece uma loja e o escopo cresce.
+13. ~~Existe moeda?~~ **Resolvido 2026-11-05: sim, paga pelas entregas.** O que ela compra continua em aberto (questão 19).
+
+**Pós-v1**
+23. O mapa de distribuição de espécies por região, alimentado por `PokedexAvistamento`. Os dados passam a ser coletados na v1 (tarefa 7.10); falta decidir como são mostrados — camada no mapa, janela própria de Pokédex por local, ou filtro na hora de escolher o destino da expedição.
 
 **Transversal**
 14. ~~Host do repositório.~~ **Resolvido 2026-11-05: GitHub pessoal.** Workflow em `.github/workflows/ci.yml`, chamando `ci/pipeline.sh`.

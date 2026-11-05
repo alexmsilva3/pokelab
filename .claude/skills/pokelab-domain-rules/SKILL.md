@@ -28,6 +28,25 @@ Evolucao dispara quando `nivel >= evolui_em_nivel` e a especie tem `evolui_para_
 
 Nivel maximo: 100.
 
+**Treinador.** A cada batalha vencida leva um terco do que a batalha gerou, antes da divisao entre o time — a base e o total, para que o tamanho do time nao seja imposto sobre a carreira do treinador.
+
+```
+exp_treinador = (experiencia_base_derrotado * nivel_derrotado / DIVISOR_EXP) / 3
+exp_total_para_nivel(n) = EXP_TREINADOR_BASE * n^2
+```
+
+**Laboratorio.** Cresce com o que o laboratorio produz, nao com o que acontece em campo.
+
+```
+expedicao bem-sucedida: EXP_LAB_POR_EXPEDICAO * (1 + nivel_dificuldade_local * 0.2)
+entrega concluida:      EXP_LAB_POR_ENTREGA * total_entregue
+exp_total_para_nivel(n) = EXP_LAB_BASE * n^2
+
+limite_treinadores = TREINADORES_INICIAIS + (nivel_laboratorio - 1)
+```
+
+Nao existe limite fixo de expedicoes simultaneas. O gargalo e o numero de treinadores disponiveis, e portanto o nivel do laboratorio.
+
 ## Poder e dificuldade
 
 ```
@@ -79,7 +98,8 @@ Derrota: consome uma Pocao ou Revive se houver, desgasta em 15 a 30 pontos. Tres
 So apos vitoria, so com Pokebola na carga e slot disponivel.
 
 ```
-slots_captura = min(pokebolas_na_carga, 1 + nivel_treinador // 5)
+capacidade_bagagem = CAPACIDADE_TOTAL_TREINADOR - tamanho_do_time
+slots_captura      = min(pokebolas_na_carga, capacidade_bagagem)
 
 p_captura = clamp(
     (taxa_captura / 255)
@@ -91,18 +111,46 @@ p_captura = clamp(
 
 Multiplicadores: Poke Ball 1.0, Great Ball 1.5, Ultra Ball 2.0. A bola e consumida no sucesso e na falha.
 
+Com `CAPACIDADE_TOTAL_TREINADOR = 6`, um treinador de time cheio traz ate 3 capturas e um de time unico traz ate 5. E trade-off deliberado: time grande vence mais encontros e captura menos. Atingida a capacidade, o treinador para de capturar mas **continua registrando** avistamentos na Pokedex.
+
+## Entregas
+
+Pedido gerado pelo jogo: levar Pokemon ate uma cidade desbloqueada. Ocupa um treinador, que entao nao vai a expedicao.
+
+```
+geracao:  1 a ESPECIES_MAXIMAS_POR_ENTREGA especies distintas, sorteadas do que o
+          professor ja viu, peso PESO_ESPECIE_CAPTURADA para o capturado e
+          PESO_ESPECIE_AVISTADA para o so avistado
+duracao:  tempo_viagem(laboratorio, destino) * MULTIPLICADOR_IDA_E_VOLTA
+          * (1 - min(nivel_treinador * 0.02, 0.40)) / EXPEDITION_TIME_SCALE
+moedas:   soma por Pokemon de (MOEDA_BASE + nivel * MOEDA_POR_NIVEL)
+          * (1 + tempo_viagem / MINUTOS_PARA_BONUS_DISTANCIA)
+```
+
+A entrega parte **sempre do laboratorio**, porque e la que os Pokemon estao — nao ha escolha de origem como na expedicao. Nao ha exploracao nem encontro: so estrada.
+
+Os Pokemon entregues saem do laboratorio em definitivo. A interface confirma isso nominalmente antes do aceite.
+
+A lista so e regerada a cada INTERVALO_REGERAR_ENTREGAS_MINUTOS. O intervalo existe para que escolher a entrega seja decisao, e nao um botao girado ate sair o pedido conveniente.
+
 ## Os dez invariantes
 
-1. Treinador tem no maximo 3 Pokemon.
+1. Treinador tem no maximo 3 Pokemon no time.
 2. Pokemon pertence a no maximo um treinador.
-3. Treinador em expedicao nao tem time alterado nem e reenviado.
-4. Pokemon de treinador em expedicao nao e desatribuido.
-5. Laboratorio tem no maximo 2 expedicoes em curso na v1.
-6. Destino deve ser vizinho de um local desbloqueado.
+3. Treinador ocupado (expedicao ou entrega) nao tem time alterado nem recebe nova missao.
+4. Pokemon de treinador ocupado nao e desatribuido.
+5. Laboratorio tem no maximo `limite_treinadores` treinadores.
+6. Destino de expedicao deve ser vizinho de um local desbloqueado.
 7. Nenhum Pokemon passa do nivel 100.
-8. Expedicao e resolvida exatamente uma vez.
+8. Expedicao ou entrega e resolvida exatamente uma vez.
 9. Estoque nunca fica negativo; carga e debitada no envio.
 10. Starters sao concedidos uma unica vez por laboratorio.
+11. Treinador carrega no maximo CAPACIDADE_TOTAL_TREINADOR Pokemon (time + bagagem).
+12. Entrega parte sempre do laboratorio.
+13. Entrega pede no maximo ESPECIES_MAXIMAS_POR_ENTREGA especies distintas.
+14. Pokemon comprometido com entrega nao entra em time, expedicao nem outra entrega.
+15. Lista de entregas so e regerada apos o intervalo de espera.
+16. Destino de entrega e sempre uma CIDADE ja desbloqueada.
 
 Validados em `game/` com excecao propria e mensagem em portugues (Artigo VI). A constraint de banco e a segunda linha de defesa.
 
