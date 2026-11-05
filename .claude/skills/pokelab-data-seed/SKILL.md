@@ -45,6 +45,12 @@ Cache local em `data/cache/`, ignorado pelo git, reaproveitado entre execucoes. 
 
 Sprites: apenas frente e costas, PNG otimizado, nomeados pelo id. Nada de shiny, animado ou de outras geracoes na v1.
 
+## Tabela legivel
+
+`tools/tabela_encontros.py` gera `docs/encontros.md` a partir do seed: uma tabela de Pokemon por peso para cada local, com nivel, taxa de captura e quantas expedicoes custa encontrar as especies raras. Rode o script sempre que mexer em `encounters.json` ou `locations.json` — o teste de sincronia acusa se esquecer.
+
+Os pesos de cada local somam 100 por convencao, para que o peso se leia direto como porcentagem de aparicao.
+
 ## Checagens obrigatorias antes de gravar
 
 1. Exatamente 151 especies, ids 1 a 151 sem buraco.
@@ -54,6 +60,8 @@ Sprites: apenas frente e costas, PNG otimizado, nomeados pelo id. Nada de shiny,
 5. Todo local tem pool de encontros nao vazio.
 6. Toda especie referenciada em `encounters.json` existe em `species.json`.
 7. Todo sprite referenciado existe no disco.
+8. Os pesos de cada local somam exatamente 100.
+9. `docs/encontros.md` esta em sincronia com o seed.
 
 Essas checagens sao teste automatizado, nao conferencia manual.
 

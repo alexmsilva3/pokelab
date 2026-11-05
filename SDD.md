@@ -111,7 +111,7 @@ Professor (1) ── (1) Laboratorio
 
 **PokemonEspecie** — `id` (1..151), `nome`, `tipo_primario`, `tipo_secundario`, `hp_base`, `ataque_base`, `defesa_base`, `ataque_especial_base`, `defesa_especial_base`, `velocidade_base`, `experiencia_base`, `taxa_captura`, `curva_crescimento`, `evolui_para_id`, `evolui_em_nivel`, `sprite_frente`, `sprite_costas`, `e_inicial`.
 
-**Local** — `id`, `nome`, `tipo` (`CIDADE` | `ROTA` | `MASMORRA`), `nivel_dificuldade` (1..10), `nivel_selvagem_min`, `nivel_selvagem_max`, `duracao_base_minutos`, `locais_vizinhos` (arestas do grafo), `e_inicial`.
+**Local** — `id`, `nome`, `tipo` (`CIDADE` | `ROTA` | `MASMORRA`), `nivel_dificuldade` (1..10), `nivel_selvagem_min`, `nivel_selvagem_max`, `custo_travessia_minutos`, `encontros_base`, `vizinhos` (arestas do grafo), `e_inicial`.
 
 **LocalEncontro** — `local_id`, `especie_id`, `peso` (probabilidade relativa), `nivel_min`, `nivel_max`.
 
@@ -198,20 +198,32 @@ p_vitoria = clamp(1 / (1 + e^(-2.5 * (razao - 1))), 0.05, 0.95)
 
 ### 4.3 Duração da expedição
 
+A duração é a soma de dois tempos com significados diferentes: **atravessar** o caminho até o destino, e **explorar** o destino.
+
 ```
-duracao = duracao_base_local
+caminho          = menor rota de locais entre a origem e o destino
+tempo_viagem     = soma de custo_travessia_minutos de cada local do caminho, exceto a origem
+tempo_exploracao = encontros_base_destino * MINUTOS_POR_ENCONTRO
+
+duracao = (tempo_viagem + tempo_exploracao)
         * (1 - min(nivel_treinador * 0.02, 0.40))     # treinador experiente é mais rápido
         * (1 - bonus_itens)                            # carga de suporte acelera
         / EXPEDITION_TIME_SCALE
 ```
 
-Com `duracao_base_local` entre 5 e 45 minutos conforme a distância do laboratório. `bonus_itens` é limitado a 0.25.
+`bonus_itens` é limitado a 0.25. Custo de travessia por tipo: cidade 3 min, rota 4 min, masmorra 8 min.
+
+Esta formulação tem três consequências deliberadas. **Desbloquear um local encurta de verdade** as expedições que partem dele — uma ida a Mt. Moon partindo de Pallet leva 55 minutos, partindo de Route 3 leva 29. Sem isso, o desbloqueio só destravaria destinos, e o SDD prometia mais que isso. **Nenhum local tem duração arbitrária**: ela emerge do caminho, e corrigir o mapa corrige os tempos. E **o rendimento deixa de ser refém do relógio** — ver 4.4.
 
 ### 4.4 Encontros
 
 ```
-qtd_encontros = round(duracao_base_local / 5) ajustado por +-1 aleatório, mínimo 3
+qtd_encontros = max(1, encontros_base_destino + aleatorio(-1, +1))
 ```
+
+A quantidade de encontros vem de `encontros_base` do destino, declarado no seed, e **não** é derivada da duração. Ritmo da sessão e rendimento da expedição são decisões de design separadas: Pallet Town rende 2 encontros porque é o quintal de casa, não porque fica perto.
+
+Valores atuais: de 2 (Pallet Town) a 7 (Mt. Moon). A tabela completa, com os pesos de cada espécie, está em [docs/encontros.md](docs/encontros.md), gerada de `data/seed/` por `tools/tabela_encontros.py`.
 
 Para cada encontro, sorteia-se a espécie pelo `peso` da tabela `LocalEncontro` e o nível na faixa do local. Rola-se `p_vitoria`:
 
@@ -516,6 +528,7 @@ Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqu
 | 8.1 | `tools/simulate_balance.py`: Monte Carlo de N expedições variando nível de time, treinador e local | `pokelab-balance` | `pokelab-domain-rules` |
 | 8.2 | Relatório de curvas: taxa de sucesso, capturas por hora, EXP por hora, tempo até desbloquear Kanto inteiro | `pokelab-balance` | `dataviz` |
 | 8.3 | Ajustar `balance.py` para as metas: ~70% de sucesso com time adequado, ~25% com time subnivelado | `pokelab-balance` | `pokelab-domain-rules` |
+| 8.6 | Calibrar `custo_travessia_minutos` e `encontros_base` por local: duração percebida, rendimento por hora e o ganho real de desbloquear cada local | `pokelab-balance` | `pokelab-data-seed` |
 | 8.4 | Testes de regressão de balanceamento (faixas aceitáveis, não valores exatos) | `pokelab-test` | — |
 | 8.5 | Calibrar a economia de itens (tarefa 7.11) para que o estoque não seque nem acumule | `pokelab-balance` | `pokelab-domain-rules` |
 
@@ -660,6 +673,6 @@ Pontos que não bloqueiam o início, mas precisam de decisão antes das fases in
 14. ~~Host do repositório.~~ **Resolvido 2026-11-05: GitHub pessoal.** Workflow em `.github/workflows/ci.yml`, chamando `ci/pipeline.sh`.
 17. **Evolução fora da v1**: 100 das 151 espécies não evoluem por nível. Parte nunca evolui (Mew, Tauros), parte depende de pedra (Pikachu→Raichu, Eevee) ou troca (Kadabra, Machoke). Entram numa versão posterior junto com uma mecânica de itens de evolução, ou ficam de fora para sempre? **Adiado deliberadamente para a tarefa 9.7, após a v1 estar jogável.**
 
-18. **Piso de encontros achata metade do mapa** (descoberto 2026-11-05). `qtd_encontros = max(3, round(duracao_base / 5) ± 1)` faz Pallet (5 min), Route 1 (8 min), Viridian City (10 min) e Route 2 (10 min) renderem os mesmos 3 encontros. Pallet passa a ser estritamente a melhor rota por hora, e os quatro primeiros locais do mapa não se diferenciam em rendimento. Duas saídas: desacoplar os encontros da duração com um campo `encontros_base` próprio em `locations.json`, ou baixar o piso para 1 e encurtar as durações iniciais. Decidir antes da Fase 6, que é quando a fórmula entra em código.
+18. ~~Piso de encontros achata metade do mapa.~~ **Resolvido 2026-11-05: desacoplado.** `encontros_base` por local no seed, e a duração passou a ser calculada pelo caminho (seções 4.3 e 4.4). Os números de travessia e de encontros foram escolhidos por estimativa e ainda não por simulação — a calibragem é da Fase 8, tarefa 8.3.
 16. **Avatar do treinador**: o ADR-002 cobre apenas sprites de Pokémon. Sugiro avatar gerado (iniciais sobre cor determinística pelo id do treinador) — zero asset, zero licença, e substituível depois sem migração.
 15. Idioma da interface: português apenas, ou nomes de Pokémon e locais em inglês com o restante em português? (Assumi a segunda opção, que é o padrão da comunidade.)

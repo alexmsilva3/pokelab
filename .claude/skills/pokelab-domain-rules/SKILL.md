@@ -44,22 +44,31 @@ A sigmoide existe para que nunca haja vitoria nem derrota garantida. Os limites 
 
 ## Duracao da expedicao
 
+Dois tempos com significados diferentes: atravessar o caminho, e explorar o destino.
+
 ```
-duracao = duracao_base_local
+tempo_viagem     = soma de custo_travessia_minutos de cada local do caminho, exceto a origem
+tempo_exploracao = encontros_base_destino * MINUTOS_POR_ENCONTRO
+
+duracao = (tempo_viagem + tempo_exploracao)
         * (1 - min(nivel_treinador * 0.02, 0.40))
         * (1 - bonus_itens)
         / EXPEDITION_TIME_SCALE
 ```
+
+O caminho e a menor rota no grafo de vizinhanca entre a origem da expedicao e o destino. A origem e o local desbloqueado de onde o treinador parte, nao necessariamente o laboratorio — e por isso que desbloquear encurta expedicoes de verdade.
 
 `bonus_itens` limitado a 0.25. `EXPEDITION_TIME_SCALE` vem da configuracao (ADR-004) e e o unico valor desta skill que **nao** mora em `balance.py` — e ambiente, nao calibragem. O dominio recebe esse valor como parametro; nunca o le do ambiente (Artigo I).
 
 ## Encontros
 
 ```
-qtd_encontros = max(3, round(duracao_base_local / 5) + aleatorio(-1, +1))
+qtd_encontros = max(1, encontros_base_destino + aleatorio(-1, +1))
 ```
 
-Especie sorteada pelo peso da tabela de encontros do local; nivel sorteado na faixa do local.
+A quantidade vem de `encontros_base` do destino, declarado no seed. **Nao derive a quantidade de encontros da duracao** — ritmo de sessao e rendimento sao decisoes separadas, e amarra-las foi um erro corrigido em 2026-11-05.
+
+Especie sorteada pelo peso da tabela de encontros do local; nivel sorteado na faixa do local. Os pesos de um local somam 100, entao o peso le-se como porcentagem. A tabela legivel esta em `docs/encontros.md`, gerada por `tools/tabela_encontros.py`.
 
 Vitoria: distribui EXP, pode disparar subida de nivel e evolucao, desgasta o time em 3 a 8 pontos de `hp_atual_pct`.
 

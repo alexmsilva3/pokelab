@@ -145,6 +145,33 @@ def test_tipos_de_local_sao_conhecidos(locais):
     assert {local["tipo"] for local in locais} <= TIPOS_DE_LOCAL
 
 
+def test_todo_local_declara_custo_de_travessia_e_encontros(locais):
+    incompletos = [
+        local["id"]
+        for local in locais
+        if local.get("custo_travessia_minutos", 0) <= 0 or local.get("encontros_base", 0) <= 0
+    ]
+    assert not incompletos
+
+
+def test_custo_de_travessia_segue_o_tipo_do_local(locais):
+    # Cidade e passagem facil, masmorra e cara. A regra existe para que o mapa
+    # cresca sem que cada local novo invente seu proprio custo.
+    esperado = {"CIDADE": 3, "ROTA": 4, "MASMORRA": 8}
+    divergentes = [
+        local["id"]
+        for local in locais
+        if local["custo_travessia_minutos"] != esperado[local["tipo"]]
+    ]
+    assert not divergentes
+
+
+def test_duracao_base_nao_existe_mais(locais):
+    # A duracao e calculada pelo caminho (SDD 4.3), nao declarada por local.
+    residuos = [local["id"] for local in locais if "duracao_base_minutos" in local]
+    assert not residuos
+
+
 def test_faixa_de_nivel_selvagem_e_coerente(locais):
     invertidas = [
         local["id"] for local in locais if local["nivel_selvagem_min"] > local["nivel_selvagem_max"]
@@ -237,6 +264,42 @@ def test_nivel_de_encontro_respeita_a_faixa_do_local(locais, encontros):
         )
     ]
     assert not fora
+
+
+def test_pesos_de_cada_local_somam_cem(encontros):
+    # Convencao do projeto: com soma 100, o peso le-se direto como porcentagem.
+    fora = {
+        local_id: sum(entrada["peso"] for entrada in pool)
+        for local_id, pool in encontros.items()
+        if sum(entrada["peso"] for entrada in pool) != 100
+    }
+    assert not fora
+
+
+def test_tabela_legivel_esta_em_sincronia_com_o_seed():
+    # docs/encontros.md e gerado de data/seed/. Se divergir, alguem editou um dos
+    # dois a mao e a documentacao passou a mentir.
+    import sys
+
+    sys.path.insert(0, str(RAIZ / "tools"))
+    from tabela_encontros import montar
+
+    destino = RAIZ / "docs" / "encontros.md"
+    assert destino.is_file(), "rode tools/tabela_encontros.py"
+    assert destino.read_text(encoding="utf-8") == montar(), (
+        "docs/encontros.md desatualizado: rode tools/tabela_encontros.py"
+    )
+
+
+def test_minutos_por_encontro_do_script_espelha_o_balance():
+    import sys
+
+    sys.path.insert(0, str(RAIZ / "tools"))
+    import tabela_encontros
+
+    from app.game import balance
+
+    assert tabela_encontros.MINUTOS_POR_ENCONTRO == balance.MINUTOS_POR_ENCONTRO
 
 
 def test_nenhuma_especie_repetida_no_mesmo_pool(encontros):

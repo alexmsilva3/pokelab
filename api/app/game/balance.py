@@ -51,15 +51,21 @@ P_VITORIA_MAXIMA: Final[float] = 0.95
 
 # --- Duracao da expedicao (SDD 4.3) ----------------------------------------
 
+# A duracao e a soma de dois tempos com significados diferentes: atravessar o
+# caminho ate o destino, e explorar o destino. Cada local traz o proprio
+# custo_travessia_minutos e o proprio encontros_base no seed.
+MINUTOS_POR_ENCONTRO: Final[int] = 3  # tempo de exploracao que cada encontro custa
+
 REDUCAO_POR_NIVEL_TREINADOR: Final[float] = 0.02  # -2% de duracao por nivel
 REDUCAO_MAXIMA_TREINADOR: Final[float] = 0.40
 BONUS_ITENS_MAXIMO: Final[float] = 0.25
 
 # --- Encontros (SDD 4.4) ---------------------------------------------------
 
-MINUTOS_POR_ENCONTRO: Final[int] = 5
-ENCONTROS_MINIMOS: Final[int] = 3
+# A quantidade de encontros vem de encontros_base do destino, nao da duracao:
+# ritmo da sessao e rendimento da expedicao sao decisoes de design separadas.
 VARIACAO_ENCONTROS: Final[int] = 1
+ENCONTROS_MINIMOS: Final[int] = 1
 
 DESGASTE_VITORIA: Final[tuple[int, int]] = (3, 8)  # pontos de hp_atual_pct
 DESGASTE_DERROTA: Final[tuple[int, int]] = (15, 30)

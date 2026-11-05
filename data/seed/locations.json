@@ -1,112 +1,150 @@
 [
   {
-    "duracao_base_minutos": 5,
-    "e_inicial": true,
-    "id": "pallet-town",
-    "nivel_dificuldade": 1,
-    "nivel_selvagem_max": 4,
-    "nivel_selvagem_min": 2,
-    "nome": "Pallet Town",
-    "tipo": "CIDADE",
-    "vizinhos": ["route-1"]
-  },
-  {
-    "duracao_base_minutos": 8,
+    "custo_travessia_minutos": 3,
     "e_inicial": false,
-    "id": "route-1",
-    "nivel_dificuldade": 1,
-    "nivel_selvagem_max": 5,
-    "nivel_selvagem_min": 2,
-    "nome": "Route 1",
-    "tipo": "ROTA",
-    "vizinhos": ["pallet-town", "viridian-city"]
-  },
-  {
-    "duracao_base_minutos": 10,
-    "e_inicial": false,
-    "id": "viridian-city",
-    "nivel_dificuldade": 2,
-    "nivel_selvagem_max": 6,
-    "nivel_selvagem_min": 3,
-    "nome": "Viridian City",
-    "tipo": "CIDADE",
-    "vizinhos": ["route-1", "route-2", "route-22"]
-  },
-  {
-    "duracao_base_minutos": 15,
-    "e_inicial": false,
-    "id": "route-22",
-    "nivel_dificuldade": 5,
-    "nivel_selvagem_max": 10,
-    "nivel_selvagem_min": 6,
-    "nome": "Route 22",
-    "tipo": "ROTA",
-    "vizinhos": ["viridian-city"]
-  },
-  {
-    "duracao_base_minutos": 10,
-    "e_inicial": false,
-    "id": "route-2",
-    "nivel_dificuldade": 2,
-    "nivel_selvagem_max": 6,
-    "nivel_selvagem_min": 3,
-    "nome": "Route 2",
-    "tipo": "ROTA",
-    "vizinhos": ["viridian-city", "viridian-forest"]
-  },
-  {
-    "duracao_base_minutos": 18,
-    "e_inicial": false,
-    "id": "viridian-forest",
-    "nivel_dificuldade": 3,
-    "nivel_selvagem_max": 8,
-    "nivel_selvagem_min": 4,
-    "nome": "Viridian Forest",
-    "tipo": "MASMORRA",
-    "vizinhos": ["route-2", "pewter-city"]
-  },
-  {
-    "duracao_base_minutos": 15,
-    "e_inicial": false,
-    "id": "pewter-city",
-    "nivel_dificuldade": 3,
-    "nivel_selvagem_max": 9,
-    "nivel_selvagem_min": 5,
-    "nome": "Pewter City",
-    "tipo": "CIDADE",
-    "vizinhos": ["viridian-forest", "route-3"]
-  },
-  {
-    "duracao_base_minutos": 20,
-    "e_inicial": false,
-    "id": "route-3",
-    "nivel_dificuldade": 4,
-    "nivel_selvagem_max": 10,
-    "nivel_selvagem_min": 6,
-    "nome": "Route 3",
-    "tipo": "ROTA",
-    "vizinhos": ["pewter-city", "mt-moon"]
-  },
-  {
-    "duracao_base_minutos": 30,
-    "e_inicial": false,
-    "id": "mt-moon",
-    "nivel_dificuldade": 5,
-    "nivel_selvagem_max": 12,
-    "nivel_selvagem_min": 7,
-    "nome": "Mt. Moon",
-    "tipo": "MASMORRA",
-    "vizinhos": ["route-3", "cerulean-city"]
-  },
-  {
-    "duracao_base_minutos": 25,
-    "e_inicial": false,
+    "encontros_base": 4,
     "id": "cerulean-city",
     "nivel_dificuldade": 6,
     "nivel_selvagem_max": 14,
     "nivel_selvagem_min": 10,
     "nome": "Cerulean City",
     "tipo": "CIDADE",
-    "vizinhos": ["mt-moon"]
+    "vizinhos": [
+      "mt-moon"
+    ]
+  },
+  {
+    "custo_travessia_minutos": 8,
+    "e_inicial": false,
+    "encontros_base": 7,
+    "id": "mt-moon",
+    "nivel_dificuldade": 5,
+    "nivel_selvagem_max": 12,
+    "nivel_selvagem_min": 7,
+    "nome": "Mt. Moon",
+    "tipo": "MASMORRA",
+    "vizinhos": [
+      "route-3",
+      "cerulean-city"
+    ]
+  },
+  {
+    "custo_travessia_minutos": 3,
+    "e_inicial": true,
+    "encontros_base": 2,
+    "id": "pallet-town",
+    "nivel_dificuldade": 1,
+    "nivel_selvagem_max": 4,
+    "nivel_selvagem_min": 2,
+    "nome": "Pallet Town",
+    "tipo": "CIDADE",
+    "vizinhos": [
+      "route-1"
+    ]
+  },
+  {
+    "custo_travessia_minutos": 3,
+    "e_inicial": false,
+    "encontros_base": 3,
+    "id": "pewter-city",
+    "nivel_dificuldade": 3,
+    "nivel_selvagem_max": 9,
+    "nivel_selvagem_min": 5,
+    "nome": "Pewter City",
+    "tipo": "CIDADE",
+    "vizinhos": [
+      "viridian-forest",
+      "route-3"
+    ]
+  },
+  {
+    "custo_travessia_minutos": 4,
+    "e_inicial": false,
+    "encontros_base": 3,
+    "id": "route-1",
+    "nivel_dificuldade": 1,
+    "nivel_selvagem_max": 5,
+    "nivel_selvagem_min": 2,
+    "nome": "Route 1",
+    "tipo": "ROTA",
+    "vizinhos": [
+      "pallet-town",
+      "viridian-city"
+    ]
+  },
+  {
+    "custo_travessia_minutos": 4,
+    "e_inicial": false,
+    "encontros_base": 4,
+    "id": "route-2",
+    "nivel_dificuldade": 2,
+    "nivel_selvagem_max": 6,
+    "nivel_selvagem_min": 3,
+    "nome": "Route 2",
+    "tipo": "ROTA",
+    "vizinhos": [
+      "viridian-city",
+      "viridian-forest"
+    ]
+  },
+  {
+    "custo_travessia_minutos": 4,
+    "e_inicial": false,
+    "encontros_base": 4,
+    "id": "route-22",
+    "nivel_dificuldade": 5,
+    "nivel_selvagem_max": 10,
+    "nivel_selvagem_min": 6,
+    "nome": "Route 22",
+    "tipo": "ROTA",
+    "vizinhos": [
+      "viridian-city"
+    ]
+  },
+  {
+    "custo_travessia_minutos": 4,
+    "e_inicial": false,
+    "encontros_base": 5,
+    "id": "route-3",
+    "nivel_dificuldade": 4,
+    "nivel_selvagem_max": 10,
+    "nivel_selvagem_min": 6,
+    "nome": "Route 3",
+    "tipo": "ROTA",
+    "vizinhos": [
+      "pewter-city",
+      "mt-moon"
+    ]
+  },
+  {
+    "custo_travessia_minutos": 3,
+    "e_inicial": false,
+    "encontros_base": 3,
+    "id": "viridian-city",
+    "nivel_dificuldade": 2,
+    "nivel_selvagem_max": 6,
+    "nivel_selvagem_min": 3,
+    "nome": "Viridian City",
+    "tipo": "CIDADE",
+    "vizinhos": [
+      "route-1",
+      "route-2",
+      "route-22"
+    ]
+  },
+  {
+    "custo_travessia_minutos": 8,
+    "e_inicial": false,
+    "encontros_base": 6,
+    "id": "viridian-forest",
+    "nivel_dificuldade": 3,
+    "nivel_selvagem_max": 8,
+    "nivel_selvagem_min": 4,
+    "nome": "Viridian Forest",
+    "tipo": "MASMORRA",
+    "vizinhos": [
+      "route-2",
+      "pewter-city"
+    ]
   }
 ]

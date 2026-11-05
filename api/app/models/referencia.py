@@ -68,7 +68,12 @@ class Local(Base):
     nivel_dificuldade: Mapped[int] = mapped_column(Integer, nullable=False)
     nivel_selvagem_min: Mapped[int] = mapped_column(Integer, nullable=False)
     nivel_selvagem_max: Mapped[int] = mapped_column(Integer, nullable=False)
-    duracao_base_minutos: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Dois numeros com papeis distintos: quanto custa passar por aqui a caminho
+    # de outro lugar, e quanto rende explorar este lugar. A duracao da expedicao
+    # soma os dois ao longo do caminho (SDD 4.3).
+    custo_travessia_minutos: Mapped[int] = mapped_column(Integer, nullable=False)
+    encontros_base: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Dez locais com arestas fixas, sempre lidos inteiros: uma tabela de juncao
     # custaria um join em toda consulta de mapa sem ganho nenhum.
