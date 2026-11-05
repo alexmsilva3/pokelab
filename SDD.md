@@ -258,7 +258,8 @@ PokeLab/
 ├── SDD.md                      # este documento
 ├── docker-compose.yml          # postgres + api + web
 ├── .env.example
-├── .github/workflows/ci.yml    # lint -> test -> build
+├── .github/workflows/ci.yml    # invoca ci/pipeline.sh
+├── ci/pipeline.sh              # lint -> test -> build (fonte da verdade)
 ├── specs/                      # artefatos SDD por feature
 │   ├── constitution.md         # princípios invioláveis do projeto
 │   └── NNN-nome-da-feature/
@@ -281,6 +282,7 @@ PokeLab/
 │       ├── schemas/            # Pydantic (contrato da API)
 │       ├── repositories/
 │       ├── services/           # casos de uso
+│       ├── seed.py             # carga idempotente de data/seed no banco
 │       ├── game/               # DOMÍNIO PURO, sem I/O
 │       │   ├── balance.py      # todas as constantes de tuning
 │       │   ├── experience.py
@@ -345,7 +347,7 @@ Dez fases. Cada uma tem um entregável demonstrável e um critério de pronto ob
 
 ---
 
-### Fase 0 — Fundação do Laboratório
+### Fase 0 — Fundação do Laboratório — CONCLUÍDA (2026-11-05)
 *Scaffold, infraestrutura local e o ritual SDD.*
 
 | # | Tarefa | Agente | Skills |
@@ -363,14 +365,16 @@ Dez fases. Cada uma tem um entregável demonstrável e um critério de pronto ob
 
 ---
 
-### Fase 1 — Pokédex Nacional
+### Fase 1 — Pokédex Nacional — CONCLUÍDA (2026-11-05)
 *Ingestão dos dados e sprites dos 151, e do mapa de Kanto.*
+
+Spec em [specs/001-seed-de-dados/](specs/001-seed-de-dados/). Resultado: 151 espécies, 302 sprites (3,6 MB), 10 locais, 40 entradas de encontro, 6 itens. 40 testes verdes.
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
 | 1.1 | `tools/ingest_pokeapi.py`: baixa espécies 1–151, normaliza para o schema de 3.1, grava `data/seed/species.json` | `pokelab-data` | `pokelab-data-seed` |
 | 1.2 | Baixar e otimizar sprites (frente/costas) para `data/sprites/` | `pokelab-data` | `pokelab-data-seed` |
-| 1.3 | Curvas de evolução dos 151 (gatilho por nível apenas; evoluções por pedra/troca ficam fora da v1 e são registradas como pendência) | `pokelab-data` | `pokelab-data-seed` |
+| 1.3 | Curvas de evolução dos 151 (gatilho por nível apenas) — 51 das 151 espécies evoluem por nível; pedra, troca e amizade ficam fora da v1 (questão 17) | `pokelab-data` | `pokelab-data-seed` |
 | 1.4 | `data/seed/locations.json`: grafo do recorte v1 (10 locais, abaixo), com dificuldade, faixa de nível e duração base | `pokelab-architect` | `pokelab-domain-rules` |
 | 1.5 | `data/seed/encounters.json`: pool de encontros por local com pesos | `pokelab-data` | `pokelab-domain-rules` |
 | 1.6 | `data/seed/items.json`: Pokébola, Great Ball, Ultra Ball, Poção, Super Poção, Revive | `pokelab-data` | — |
@@ -652,6 +656,7 @@ Pontos que não bloqueiam o início, mas precisam de decisão antes das fases in
 13. Existe moeda? Sem economia, itens só vêm de expedição; com economia, aparece uma loja e o escopo cresce.
 
 **Transversal**
-14. Repositório no git pessoal — falta saber o **host** (GitHub pessoal, GitLab, ou servidor próprio tipo Gitea). A tarefa 10.2 e o formato do CI dependem disso. Não bloqueia as Fases 0 a 9.
+14. ~~Host do repositório.~~ **Resolvido 2026-11-05: GitHub pessoal.** Workflow em `.github/workflows/ci.yml`, chamando `ci/pipeline.sh`.
+17. **Evolução fora da v1**: 100 das 151 espécies não evoluem por nível. Parte nunca evolui (Mew, Tauros), parte depende de pedra (Pikachu→Raichu, Eevee) ou troca (Kadabra, Machoke). Entram numa versão posterior junto com uma mecânica de itens de evolução, ou ficam de fora para sempre?
 16. **Avatar do treinador**: o ADR-002 cobre apenas sprites de Pokémon. Sugiro avatar gerado (iniciais sobre cor determinística pelo id do treinador) — zero asset, zero licença, e substituível depois sem migração.
 15. Idioma da interface: português apenas, ou nomes de Pokémon e locais em inglês com o restante em português? (Assumi a segunda opção, que é o padrão da comunidade.)

@@ -1,0 +1,62 @@
+{
+  "cerulean-city": [
+    { "especie_id": 19, "nivel_max": 12, "nivel_min": 10, "peso": 20 },
+    { "especie_id": 54, "nivel_max": 14, "nivel_min": 10, "peso": 25 },
+    { "especie_id": 60, "nivel_max": 13, "nivel_min": 10, "peso": 25 },
+    { "especie_id": 98, "nivel_max": 14, "nivel_min": 11, "peso": 20 },
+    { "especie_id": 120, "nivel_max": 14, "nivel_min": 12, "peso": 10 }
+  ],
+  "mt-moon": [
+    { "especie_id": 41, "nivel_max": 11, "nivel_min": 7, "peso": 35 },
+    { "especie_id": 74, "nivel_max": 11, "nivel_min": 7, "peso": 25 },
+    { "especie_id": 46, "nivel_max": 10, "nivel_min": 7, "peso": 20 },
+    { "especie_id": 27, "nivel_max": 11, "nivel_min": 8, "peso": 12 },
+    { "especie_id": 35, "nivel_max": 12, "nivel_min": 9, "peso": 8 }
+  ],
+  "pallet-town": [
+    { "especie_id": 16, "nivel_max": 4, "nivel_min": 2, "peso": 50 },
+    { "especie_id": 19, "nivel_max": 4, "nivel_min": 2, "peso": 50 }
+  ],
+  "pewter-city": [
+    { "especie_id": 19, "nivel_max": 8, "nivel_min": 5, "peso": 30 },
+    { "especie_id": 21, "nivel_max": 9, "nivel_min": 5, "peso": 30 },
+    { "especie_id": 27, "nivel_max": 9, "nivel_min": 6, "peso": 25 },
+    { "especie_id": 74, "nivel_max": 9, "nivel_min": 6, "peso": 15 }
+  ],
+  "route-1": [
+    { "especie_id": 16, "nivel_max": 5, "nivel_min": 2, "peso": 55 },
+    { "especie_id": 19, "nivel_max": 5, "nivel_min": 2, "peso": 45 }
+  ],
+  "route-2": [
+    { "especie_id": 16, "nivel_max": 6, "nivel_min": 3, "peso": 30 },
+    { "especie_id": 19, "nivel_max": 5, "nivel_min": 3, "peso": 25 },
+    { "especie_id": 10, "nivel_max": 5, "nivel_min": 3, "peso": 25 },
+    { "especie_id": 13, "nivel_max": 5, "nivel_min": 3, "peso": 20 }
+  ],
+  "route-22": [
+    { "especie_id": 21, "nivel_max": 9, "nivel_min": 6, "peso": 30 },
+    { "especie_id": 56, "nivel_max": 10, "nivel_min": 6, "peso": 25 },
+    { "especie_id": 29, "nivel_max": 9, "nivel_min": 6, "peso": 20 },
+    { "especie_id": 32, "nivel_max": 9, "nivel_min": 6, "peso": 20 },
+    { "especie_id": 19, "nivel_max": 8, "nivel_min": 6, "peso": 5 }
+  ],
+  "route-3": [
+    { "especie_id": 21, "nivel_max": 10, "nivel_min": 6, "peso": 30 },
+    { "especie_id": 39, "nivel_max": 9, "nivel_min": 6, "peso": 25 },
+    { "especie_id": 56, "nivel_max": 10, "nivel_min": 7, "peso": 25 },
+    { "especie_id": 16, "nivel_max": 9, "nivel_min": 6, "peso": 20 }
+  ],
+  "viridian-city": [
+    { "especie_id": 19, "nivel_max": 6, "nivel_min": 3, "peso": 40 },
+    { "especie_id": 21, "nivel_max": 6, "nivel_min": 3, "peso": 35 },
+    { "especie_id": 16, "nivel_max": 6, "nivel_min": 3, "peso": 25 }
+  ],
+  "viridian-forest": [
+    { "especie_id": 10, "nivel_max": 6, "nivel_min": 4, "peso": 28 },
+    { "especie_id": 13, "nivel_max": 6, "nivel_min": 4, "peso": 28 },
+    { "especie_id": 11, "nivel_max": 8, "nivel_min": 5, "peso": 16 },
+    { "especie_id": 14, "nivel_max": 8, "nivel_min": 5, "peso": 16 },
+    { "especie_id": 16, "nivel_max": 7, "nivel_min": 4, "peso": 9 },
+    { "especie_id": 25, "nivel_max": 8, "nivel_min": 5, "peso": 3 }
+  ]
+}

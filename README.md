@@ -19,11 +19,15 @@ FastAPI + PostgreSQL 16 no backend, React + Vite + TypeScript no frontend, Docke
 cp .env.example .env
 make setup
 make up
+make migrate
+make seed
 ```
 
 API em `http://localhost:8000` (documentação em `/docs`), interface em `http://localhost:5173`.
 
-Fora do Docker, `make lint` e `make test` rodam as verificações dos dois lados. `make help` lista o resto.
+`make seed` carrega as 151 espécies, os dez locais, os pools de encontro e os itens a partir de `data/seed/`, que já vem versionado. `make ingest` só é necessário para rebaixar os dados da PokeAPI.
+
+`make lint` e `make test` rodam as verificações dos dois lados em container, sem exigir toolchain local. `make test-db` acrescenta os testes que precisam de Postgres de pé. `make help` lista o resto.
 
 ## Organização
 

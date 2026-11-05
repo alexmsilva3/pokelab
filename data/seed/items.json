@@ -1,0 +1,44 @@
+[
+  {
+    "categoria": "POKEBOLA",
+    "efeito_duracao": 0.0,
+    "id": "poke-ball",
+    "nome": "Poke Ball",
+    "potencia": 1.0
+  },
+  {
+    "categoria": "POKEBOLA",
+    "efeito_duracao": 0.0,
+    "id": "great-ball",
+    "nome": "Great Ball",
+    "potencia": 1.5
+  },
+  {
+    "categoria": "POKEBOLA",
+    "efeito_duracao": 0.0,
+    "id": "ultra-ball",
+    "nome": "Ultra Ball",
+    "potencia": 2.0
+  },
+  {
+    "categoria": "CURA",
+    "efeito_duracao": 0.02,
+    "id": "potion",
+    "nome": "Potion",
+    "potencia": 20.0
+  },
+  {
+    "categoria": "CURA",
+    "efeito_duracao": 0.03,
+    "id": "super-potion",
+    "nome": "Super Potion",
+    "potencia": 50.0
+  },
+  {
+    "categoria": "REVIVE",
+    "efeito_duracao": 0.05,
+    "id": "revive",
+    "nome": "Revive",
+    "potencia": 50.0
+  }
+]
