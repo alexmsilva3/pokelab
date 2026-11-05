@@ -114,6 +114,11 @@ TREINADORES_POR_NIVEL_LABORATORIO: Final[int] = 1  # alem dos TREINADORES_INICIA
 ENTREGAS_DISPONIVEIS: Final[int] = 3  # pedidos na lista ao mesmo tempo
 ESPECIES_MAXIMAS_POR_ENTREGA: Final[int] = 3
 QUANTIDADE_MAXIMA_POR_ESPECIE: Final[int] = 3
+
+# O teto de quantidade de cada especie e ponderado pela taxa de captura, para
+# que o gerador nao peca tres Dragonite. taxa 255 -> 3, 190 -> 2, 120 ou menos
+# -> 1. Sem isso o pedido raro nasce morto e so queima um slot da lista.
+DIVISOR_QUANTIDADE_POR_CAPTURA: Final[int] = 85
 INTERVALO_REGERAR_ENTREGAS_MINUTOS: Final[int] = 15
 
 # Peso relativo no sorteio: especie ja capturada aparece mais que a so avistada,

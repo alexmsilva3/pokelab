@@ -629,7 +629,7 @@ Depende da Fase 7: a entrega só faz sentido quando existem Pokémon capturados 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
 | 8.1 | Modelos `Entrega` e `EntregaRequisito`, campo `comprometido_entrega_id` em `PokemonInstancia`, migração | `pokelab-api` | — |
-| 8.2 | `game/delivery.py`: gerador de pedidos — 1 a 3 espécies distintas sorteadas do que o professor já viu, com peso maior para o já capturado, destino entre as cidades desbloqueadas | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.2 | `game/delivery.py`: gerador de pedidos — 1 a 3 espécies distintas sorteadas do que o professor já viu, com peso maior para o já capturado, quantidade ponderada pela taxa de captura (questão 22), destino entre as cidades desbloqueadas | `pokelab-domain` | `pokelab-domain-rules` |
 | 8.3 | Duração da entrega (só travessia, ida e volta) e cálculo das recompensas em moeda e experiência | `pokelab-domain` | `pokelab-domain-rules` |
 | 8.4 | `GET /deliveries`: disponíveis, em curso e histórico, com o motivo de cada pedido inviável hoje | `pokelab-api` | `pokelab-api-conventions` |
 | 8.5 | `POST /deliveries/refresh`: regera a lista respeitando o intervalo de 15 minutos (invariante 15), devolvendo quanto falta quando recusa | `pokelab-api` | `pokelab-api-conventions` |
@@ -674,7 +674,7 @@ Depende da Fase 7: a entrega só faz sentido quando existem Pokémon capturados 
 | 10.5 | Teste de ponta a ponta do loop completo: registrar → montar time → expedir → relatório → desbloquear → entregar | `pokelab-test` | — |
 | 10.6 | Revisão de segurança: escopo por laboratório em toda rota, sem IDOR | `pokelab-test` | `security-review` |
 | 10.7 | **Revisão de escopo de evolução** (questão 17): decidir o destino das 100 espécies que não evoluem por nível — pedra, troca e amizade. Levantar quantas estão afetadas por grupo, o custo de cada mecânica e o impacto na Pokédex, e registrar a decisão em ADR | `pokelab-architect` | `pokelab-domain-rules` |
-| 10.8 | **Revisão do destino da moeda** (questão 19): sem loja, a moeda é placar. Decidir se entra uma loja, se ela paga o recrutamento, ou se o recurso sai da v1 | `pokelab-architect` | `pokelab-domain-rules` |
+| 10.8 | **Especificação da loja pós-v1** (questão 19): a moeda já acumula na v1 e vai comprar Poções, Pokébolas e treinadores. Levantar preços a partir dos dados de calibragem da Fase 9 e registrar em ADR, sem implementar | `pokelab-architect` | `pokelab-domain-rules` |
 
 **Pronto quando:** uma pessoa que nunca viu o projeto completa o loop sem instrução, e as decisões adiadas estão registradas em ADR.
 
@@ -778,7 +778,7 @@ Pontos que não bloqueiam o início, mas precisam de decisão antes das fases in
 2. ~~Laboratórios por conta.~~ **Resolvido 2026-11-05: um por conta na v1.** Quando outras regiões entrarem, cada uma ganha seu laboratório. O modelo já suporta: `Laboratorio` tem `professor_id`, então a relação é 1:N desde o início e passar de um para vários não exige migração — apenas remover a validação de unicidade.
 
 **Antes da Fase 4**
-3. Como se recruta um treinador dentro do `limite_treinadores`? Gratuito, por custo em moeda, ou recompensa de expedição? **Pendente de você.** O limite já está decidido (3 no nível 1, mais um por nível), mas o custo de preencher um slot não.
+3. Como se recruta um treinador dentro do `limite_treinadores`? **Pendente de você.** O limite já está decidido (3 no nível 1, mais um por nível) e a direção também: a questão 19 fechou que treinadores serão comprados com moeda. Falta o que vale na v1, enquanto a loja não existe — recrutar de graça até o limite é o caminho mais provável, já que o limite por si só é a restrição.
 4. Treinador pode ser perdido ou demitido? Há consequência numa falha grave? Com o limite agora atrelado ao nível do laboratório, demitir para trocar passa a ser uma jogada válida — e perder um treinador, uma perda séria.
 5. Nome e avatar dos treinadores: gerados aleatoriamente de uma lista, ou nomeados pelo professor?
 
@@ -793,10 +793,17 @@ Pontos que não bloqueiam o início, mas precisam de decisão antes das fases in
 11. Há limite de capacidade do laboratório **para Pokémon**? O limite de treinadores já existe; o de Pokémon guardados, não. Armazenamento infinito na v1, ou um "PC do Bill"? Note que as entregas passaram a ser um dreno natural de Pokémon excedentes, o que torna o limite menos urgente.
 
 **Antes da Fase 8**
-19. Para que serve a moeda? As entregas a produzem, mas nada a consome. Sem loja, ela é placar. As opções são abrir uma loja de itens na v1, usá-la como custo de recrutamento (resolvendo também a questão 3), ou aceitar que na v1 ela só conta pontos. **Adiado para a tarefa 10.8.**
+19. ~~Para que serve a moeda?~~ **Resolvido 2026-11-05: loja pós-v1.** A moeda vai comprar Poções e Pokébolas para mandar com o treinador, e novos treinadores. Na v1 ela apenas acumula — o professor vê o saldo crescer e a loja chega depois. Decisão deliberada: a economia de entrada (quanto cada entrega paga) pode ser calibrada na Fase 9 com dados reais antes de existir qualquer economia de saída, o que é a ordem certa.
 20. Quantas entregas ficam disponíveis na lista ao mesmo tempo? Propus três. Com uma só, o botão de regerar vira obrigatório e os 15 minutos pesam; com cinco, quase sempre há algo atendível e a escolha perde tensão.
 21. Entrega aceita pode ser cancelada? E a lista disponível expira sozinha com o tempo, ou fica parada até o professor regerar?
-22. Qual o teto de quantidade por espécie num pedido? Propus 3. "Enviar 3 Rattata" é rotina; "enviar 3 Dragonite" é inviável, e o gerador precisa saber a diferença — provavelmente ponderando pela taxa de captura da espécie.
+22. ~~Teto de quantidade por espécie num pedido.~~ **Resolvido 2026-11-05: ponderado pela taxa de captura.** O gerador não pede a mesma quantidade de um Rattata e de um Dragonite:
+
+```
+teto_da_especie = clamp(round(taxa_captura / DIVISOR_QUANTIDADE_POR_CAPTURA), 1, QUANTIDADE_MAXIMA_POR_ESPECIE)
+quantidade      = aleatorio(1, teto_da_especie)
+```
+
+Com `DIVISOR_QUANTIDADE_POR_CAPTURA = 85`: Rattata, Caterpie e Pidgey (taxa 255) chegam a 3; Pikachu (190) a 2; Metapod (120) e tudo que é raro (45) ficam em 1. Um pedido de três Dragonite deixa de ser possível de gerar, em vez de depender da sorte do sorteio.
 
 **Antes da Fase 9**
 12. Qual sessão alvo? Expedições de 5 a 30 minutos pressupõem que você volta algumas vezes por dia. Se a intenção for uma sessão longa única, as durações precisam encolher.
