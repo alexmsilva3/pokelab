@@ -534,8 +534,9 @@ Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqu
 | 9.4 | Tratamento uniforme de erro da API (código, mensagem em português, correlação) | `pokelab-api` | `pokelab-api-conventions` |
 | 9.5 | Teste de ponta a ponta do loop completo: registrar → montar time → expedir → relatório → desbloquear | `pokelab-test` | — |
 | 9.6 | Revisão de segurança: escopo por laboratório em toda rota, sem IDOR | `pokelab-test` | `security-review` |
+| 9.7 | **Revisão de escopo de evolução** (questão 17): decidir o destino das 100 espécies que não evoluem por nível — pedra, troca e amizade. Levantar quantas estão afetadas por grupo, o custo de cada mecânica e o impacto na Pokédex, e registrar a decisão em ADR | `pokelab-architect` | `pokelab-domain-rules` |
 
-**Pronto quando:** uma pessoa que nunca viu o projeto completa o loop sem instrução.
+**Pronto quando:** uma pessoa que nunca viu o projeto completa o loop sem instrução, e a decisão sobre evolução pós-v1 está registrada.
 
 ---
 
@@ -633,8 +634,8 @@ A spec é atualizada quando a realidade diverge dela. Código que contraria a sp
 Pontos que não bloqueiam o início, mas precisam de decisão antes das fases indicadas.
 
 **Antes da Fase 2**
-1. O registro é aberto ou você quer uma lista fechada de usuários? (O "login fake" sugere aberto, mas se for publicar na internet, muda.)
-2. Um professor por conta, ou múltiplos laboratórios por conta?
+1. ~~Registro aberto ou fechado.~~ **Resolvido 2026-11-05: aberto.**
+2. ~~Laboratórios por conta.~~ **Resolvido 2026-11-05: um por conta na v1.** Quando outras regiões entrarem, cada uma ganha seu laboratório. O modelo já suporta: `Laboratorio` tem `professor_id`, então a relação é 1:N desde o início e passar de um para vários não exige migração — apenas remover a validação de unicidade.
 
 **Antes da Fase 4**
 3. Como se recruta um treinador? Gratuito e ilimitado, por custo em moeda do jogo, ou recompensa de expedição?
@@ -657,6 +658,8 @@ Pontos que não bloqueiam o início, mas precisam de decisão antes das fases in
 
 **Transversal**
 14. ~~Host do repositório.~~ **Resolvido 2026-11-05: GitHub pessoal.** Workflow em `.github/workflows/ci.yml`, chamando `ci/pipeline.sh`.
-17. **Evolução fora da v1**: 100 das 151 espécies não evoluem por nível. Parte nunca evolui (Mew, Tauros), parte depende de pedra (Pikachu→Raichu, Eevee) ou troca (Kadabra, Machoke). Entram numa versão posterior junto com uma mecânica de itens de evolução, ou ficam de fora para sempre?
+17. **Evolução fora da v1**: 100 das 151 espécies não evoluem por nível. Parte nunca evolui (Mew, Tauros), parte depende de pedra (Pikachu→Raichu, Eevee) ou troca (Kadabra, Machoke). Entram numa versão posterior junto com uma mecânica de itens de evolução, ou ficam de fora para sempre? **Adiado deliberadamente para a tarefa 9.7, após a v1 estar jogável.**
+
+18. **Piso de encontros achata metade do mapa** (descoberto 2026-11-05). `qtd_encontros = max(3, round(duracao_base / 5) ± 1)` faz Pallet (5 min), Route 1 (8 min), Viridian City (10 min) e Route 2 (10 min) renderem os mesmos 3 encontros. Pallet passa a ser estritamente a melhor rota por hora, e os quatro primeiros locais do mapa não se diferenciam em rendimento. Duas saídas: desacoplar os encontros da duração com um campo `encontros_base` próprio em `locations.json`, ou baixar o piso para 1 e encurtar as durações iniciais. Decidir antes da Fase 6, que é quando a fórmula entra em código.
 16. **Avatar do treinador**: o ADR-002 cobre apenas sprites de Pokémon. Sugiro avatar gerado (iniciais sobre cor determinística pelo id do treinador) — zero asset, zero licença, e substituível depois sem migração.
 15. Idioma da interface: português apenas, ou nomes de Pokémon e locais em inglês com o restante em português? (Assumi a segunda opção, que é o padrão da comunidade.)
