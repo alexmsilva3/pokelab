@@ -28,3 +28,6 @@ data/cache/
 *.swp
 .DS_Store
 data/cache/
+
+# Artefato de pip install -e, regerado a cada execucao de teste
+*.egg-info/

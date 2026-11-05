@@ -13,6 +13,11 @@ dependencies = [
     "pydantic-settings>=2.6",
     "python-jose[cryptography]>=3.3",
     "passlib[bcrypt]>=1.7.4",
+    # passlib 1.7.4 nao foi atualizado para o bcrypt 4.1+, que trocou o
+    # comportamento do autoteste interno de "silenciosamente truncar" para
+    # levantar ValueError acima de 72 bytes. O proprio import de
+    # app.core.seguranca falha sem este teto.
+    "bcrypt<4.1",
     "python-multipart>=0.0.12",
 ]
 

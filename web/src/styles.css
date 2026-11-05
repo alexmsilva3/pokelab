@@ -44,3 +44,106 @@ body {
   background: var(--cor-fundo);
   color: var(--cor-texto);
 }
+
+button {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: var(--espaco-2) var(--espaco-3);
+  border-radius: var(--raio);
+  border: 1px solid var(--cor-borda);
+  background: var(--cor-superficie);
+  color: var(--cor-texto);
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.botao-primario {
+  background: var(--cor-acento);
+  color: var(--cor-acento-texto);
+  border-color: var(--cor-acento);
+}
+
+.tela-auth {
+  max-width: 420px;
+  margin: var(--espaco-5) auto;
+  padding: var(--espaco-4);
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+}
+
+.tela-auth form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-2);
+  margin-top: var(--espaco-3);
+}
+
+.tela-auth label {
+  font-size: 0.875rem;
+  color: var(--cor-texto-suave);
+}
+
+.tela-auth input {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: var(--espaco-2);
+  border-radius: var(--raio);
+  border: 1px solid var(--cor-borda);
+  background: var(--cor-fundo);
+  color: var(--cor-texto);
+}
+
+.tela-auth button {
+  margin-top: var(--espaco-2);
+}
+
+.mensagem-erro {
+  color: var(--cor-erro);
+  font-size: 0.875rem;
+}
+
+.tela-laboratorio {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--espaco-5);
+}
+
+.resumo-laboratorio {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--espaco-3);
+  margin: var(--espaco-4) 0;
+  padding: 0;
+}
+
+.resumo-laboratorio > div {
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  padding: var(--espaco-3);
+  margin: 0;
+}
+
+.resumo-laboratorio dt {
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
+}
+
+.resumo-laboratorio dd {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.aviso-vazio {
+  color: var(--cor-texto-suave);
+  background: var(--cor-superficie);
+  border: 1px dashed var(--cor-borda);
+  border-radius: var(--raio);
+  padding: var(--espaco-3);
+}

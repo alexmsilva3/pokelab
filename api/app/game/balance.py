@@ -16,7 +16,9 @@ STARTER_SPECIES_IDS: Final[tuple[int, int, int]] = (1, 4, 7)  # Bulbasaur, Charm
 STARTER_LEVEL: Final[int] = 5
 LOCAL_INICIAL_ID: Final[str] = "pallet-town"
 
-TREINADORES_INICIAIS: Final[int] = 1  # concedido no registro
+# Dois numeros distintos que ja foram confundidos por terem nome parecido:
+# quantos treinadores o kit CONCEDE, e quantos o laboratorio COMPORTA.
+TREINADORES_NO_KIT_INICIAL: Final[int] = 1
 ESTOQUE_INICIAL: Final[dict[str, int]] = {
     "poke-ball": 10,
     "potion": 5,
@@ -50,6 +52,13 @@ CURVA_MEDIA_LENTA_A: Final[float] = 1.2
 CURVA_MEDIA_LENTA_B: Final[float] = 15.0
 CURVA_MEDIA_LENTA_C: Final[float] = 100.0
 CURVA_MEDIA_LENTA_D: Final[float] = 140.0
+
+# --- Avatar de treinador (questao 16) --------------------------------------
+
+# O avatar nao e arquivo: e iniciais mais uma cor, derivadas da semente. O
+# digest precisa ser estavel entre processos, dai blake2b em vez de hash().
+BYTES_DIGEST_AVATAR: Final[int] = 8  # bytes do digest usados para sortear a cor
+LETRAS_INICIAIS_AVATAR: Final[int] = 2  # quantas letras o circulo do avatar mostra
 
 # --- Poder e dificuldade (SDD 4.2) -----------------------------------------
 
@@ -107,7 +116,8 @@ CAPACIDADE_TOTAL_TREINADOR: Final[int] = 6
 
 # Nao ha limite fixo de expedicoes simultaneas: o gargalo sao os treinadores
 # disponiveis, e portanto o nivel do laboratorio.
-TREINADORES_POR_NIVEL_LABORATORIO: Final[int] = 1  # alem dos TREINADORES_INICIAIS
+LIMITE_TREINADORES_NIVEL_1: Final[int] = 3
+TREINADORES_POR_NIVEL_LABORATORIO: Final[int] = 1  # acrescidos a cada nivel
 
 # --- Entregas (SDD 4.8) ----------------------------------------------------
 

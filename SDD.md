@@ -228,10 +228,12 @@ exp_total_para_nivel(n) = EXP_LAB_BASE * n^2
 Subir de nível aumenta a capacidade de treinadores:
 
 ```
-limite_treinadores = TREINADORES_INICIAIS + (nivel_laboratorio - 1)
+limite_treinadores = LIMITE_TREINADORES_NIVEL_1 + (nivel_laboratorio - 1) * TREINADORES_POR_NIVEL_LABORATORIO
 ```
 
-Com `TREINADORES_INICIAIS = 3`, o laboratório nível 1 comporta três treinadores, e cada nível acrescenta um. Como o limite de expedições simultâneas é o número de treinadores livres, o nível do laboratório é **o** eixo de progressão do professor.
+Com `LIMITE_TREINADORES_NIVEL_1 = 3`, o laboratório nível 1 comporta três treinadores, e cada nível acrescenta um. Como o limite de expedições simultâneas é o número de treinadores livres, o nível do laboratório é **o** eixo de progressão do professor.
+
+Esse limite é diferente de `TREINADORES_NO_KIT_INICIAL`, que vale 1: o laboratório nasce com um treinador e espaço para mais dois. Os dois números já foram confundidos uma vez por terem nome parecido — daí os nomes atuais, explícitos.
 
 ### 4.2 Poder do time e dificuldade do local
 
@@ -504,8 +506,10 @@ Dez nós, uma ramificação precoce (Route 22 como armadilha de dificuldade) e p
 
 ---
 
-### Fase 2 — Credenciais do Professor
+### Fase 2 — Credenciais do Professor — CONCLUÍDA (2026-11-05)
 *Login, sessão e criação do laboratório.*
+
+Spec em [specs/002-credenciais-do-professor/](specs/002-credenciais-do-professor/). 218 testes de backend e 16 de frontend. Revisão adversarial em quatro lentes encontrou 20 defeitos, todos corrigidos e cobertos por regressão em `api/tests/test_correcoes_revisao.py`.
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|

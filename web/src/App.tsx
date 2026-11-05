@@ -1,13 +1,29 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { RotaProtegida } from '@/components/RotaProtegida'
 import { Laboratorio } from '@/pages/Laboratorio'
+import { Login } from '@/pages/Login'
+import { Registro } from '@/pages/Registro'
+import { useSessao } from '@/store/auth'
 
 export function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/laboratorio" element={<Laboratorio />} />
-        <Route path="*" element={<Navigate to="/laboratorio" replace />} />
-      </Routes>
+      <Rotas />
     </BrowserRouter>
+  )
+}
+
+function Rotas() {
+  const sessao = useSessao()
+
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/registro" element={<Registro />} />
+      <Route element={<RotaProtegida />}>
+        <Route path="/laboratorio" element={<Laboratorio />} />
+      </Route>
+      <Route path="*" element={<Navigate to={sessao ? '/laboratorio' : '/login'} replace />} />
+    </Routes>
   )
 }
