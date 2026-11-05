@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Ambiente
+.env
+.env.local
+*.local
+
+# Dados nao versionados
+data/cache/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+.DS_Store

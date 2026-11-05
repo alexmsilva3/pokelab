@@ -1,0 +1,46 @@
+/*
+ * Tokens base do PokeLab. A interface e lista-e-botao, sem animacao.
+ * Detalhes em .claude/skills/pokelab-ui-kit/SKILL.md
+ */
+:root {
+  --cor-fundo: #f4f6f8;
+  --cor-superficie: #ffffff;
+  --cor-borda: #d8dee4;
+  --cor-texto: #1c2024;
+  --cor-texto-suave: #5b6670;
+  --cor-acento: #c2362f;
+  --cor-acento-texto: #ffffff;
+  --cor-sucesso: #1f7a3f;
+  --cor-alerta: #9a6700;
+  --cor-erro: #b42318;
+
+  --espaco-1: 4px;
+  --espaco-2: 8px;
+  --espaco-3: 16px;
+  --espaco-4: 24px;
+  --espaco-5: 32px;
+
+  --raio: 6px;
+  --fonte: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cor-fundo: #15181b;
+    --cor-superficie: #1e2226;
+    --cor-borda: #2f353b;
+    --cor-texto: #e6e9ec;
+    --cor-texto-suave: #9aa4ad;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--fonte);
+  background: var(--cor-fundo);
+  color: var(--cor-texto);
+}
