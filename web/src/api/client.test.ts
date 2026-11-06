@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, request } from '@/api/client'
 import { guardarSessao } from '@/store/auth'
 import { laboratorioExemplo } from '@/api/fixtures'
+import { erroExemplo } from '@/api/fixtures'
 
 describe('request', () => {
   beforeEach(() => {
@@ -20,9 +21,7 @@ describe('request', () => {
       vi.fn().mockResolvedValue({
         ok: false,
         status: 401,
-        json: async () => ({
-          erro: { codigo: 'TOKEN_INVALIDO', mensagem: 'Sessao expirada.' },
-        }),
+        json: async () => (erroExemplo('TOKEN_INVALIDO', 'Sessao expirada.')),
       }),
     )
 
@@ -37,9 +36,7 @@ describe('request', () => {
       vi.fn().mockResolvedValue({
         ok: false,
         status: 409,
-        json: async () => ({
-          erro: { codigo: 'USUARIO_EM_USO', mensagem: 'Esse usuario ja existe.' },
-        }),
+        json: async () => (erroExemplo('USUARIO_EM_USO', 'Esse usuario ja existe.')),
       }),
     )
 

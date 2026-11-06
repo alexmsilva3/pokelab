@@ -20,6 +20,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # `data/` e seed versionado (Artigo V): especies, locais e os 302 sprites
+    # servidos em `/sprites`. O Dockerfile da API nao o copia porque o
+    # contexto de build e `./api`, sem acesso ao irmao `data/`; o volume e
+    # quem entrega o acervo tambem em producao, no mesmo caminho que o
+    # `docker-compose.override.yml` usa em desenvolvimento.
+    volumes:
+      - ./data:/data:ro
     depends_on:
       db:
         condition: service_healthy

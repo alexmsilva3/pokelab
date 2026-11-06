@@ -232,19 +232,27 @@ def test_recurso_nao_encontrado_produz_o_envelope_404_padrao_quando_levantado():
     }
 
 
-@pytest.mark.skip(
-    reason=(
-        "Criterio de aceite 8 da spec 002 pede um recurso identificado por id que "
-        "pertence a um laboratorio (ex.: GET /pokemon/{id}). Nenhuma rota desta fase "
-        "expoe um recurso assim: a unica leitura protegida e GET /me, que nao recebe "
-        "id e sempre resolve o laboratorio da propria sessao (coberto acima). O "
-        "mecanismo que vai produzir o 404 ja existe e esta testado em "
-        "test_recurso_nao_encontrado_produz_o_envelope_404_padrao_quando_levantado. "
-        "Destravar este teste quando a primeira rota com recurso por id existir."
+def test_acessar_pelo_id_um_recurso_que_pertence_a_outro_professor_responde_404(sessao_db):
+    """Criterio de aceite 8 da spec 002, destravado pela Fase 3: `GET /pokemon/{id}`
+    e a primeira rota que recebe um recurso por id. O mecanismo generico ja estava
+    testado acima; este teste confere a rota real de ponta a ponta.
+    """
+    dono = client.post("/auth/register", json={"usuario": "Misty", "senha": "starmie12345"})
+    outro = client.post("/auth/register", json={"usuario": "Brock", "senha": "onix1234567"})
+
+    pokemon_do_dono = sessao_db.scalars(
+        select(PokemonInstancia).where(
+            PokemonInstancia.laboratorio_id == dono.json()["laboratorio"]["id"]
+        )
+    ).first()
+
+    resposta = client.get(
+        f"/pokemon/{pokemon_do_dono.id}",
+        headers={"Authorization": f"Bearer {outro.json()['token']}"},
     )
-)
-def test_acessar_pelo_id_um_recurso_que_pertence_a_outro_professor_responde_404():
-    raise NotImplementedError
+
+    assert resposta.status_code == 404
+    assert resposta.json()["erro"]["codigo"] == "RECURSO_NAO_ENCONTRADO"
 
 
 # --- Criterio 9 (e item 1 da constituicao: concorrencia) --------------------

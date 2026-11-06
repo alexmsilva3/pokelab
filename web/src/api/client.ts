@@ -11,6 +11,16 @@ import { limparSessao, obterToken } from '@/store/auth'
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 /**
+ * Monta a URL de um sprite a partir do caminho relativo que o servidor manda
+ * (ex.: "25-front.png"). O acervo de imagens e servido pela propria API
+ * (Artigo V: nenhuma requisicao a servico externo), nunca montado a partir
+ * de um host fixo no banco.
+ */
+export function urlSprite(caminho: string): string {
+  return `${BASE_URL}/sprites/${caminho}`
+}
+
+/**
  * Erro de API traduzido do envelope do servidor
  * ({"erro": {"codigo", "mensagem", "detalhes"}}) para algo que a tela usa
  * diretamente: a mensagem em `message` ja vem em portugues, escrita pelo

@@ -21,9 +21,10 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.models.referencia import Local, PokemonEspecie
 
 
 class Professor(Base):
@@ -133,6 +134,14 @@ class PokemonInstancia(Base):
 
     # `comprometido_entrega_id` do SDD 3.2 entra na Fase 8, junto da tabela
     # `entregas`: nao ha o que referenciar ainda.
+
+    # Relacionamentos de leitura para a ficha e a listagem (spec 003). Lazy
+    # "select" por padrao: quem lista em volume usa `joinedload`/`selectinload`
+    # explicito no repositorio, para nao reintroduzir o N+1 que esses mesmos
+    # campos existem para evitar.
+    especie: Mapped[PokemonEspecie] = relationship(PokemonEspecie)
+    treinador: Mapped[Treinador | None] = relationship(Treinador)
+    local_captura: Mapped[Local | None] = relationship(Local)
 
     def __repr__(self) -> str:
         return f"<PokemonInstancia {self.id} especie={self.especie_id}>"

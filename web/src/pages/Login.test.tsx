@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Login } from '@/pages/Login'
 import { laboratorioExemplo } from '@/api/fixtures'
+import { erroExemplo } from '@/api/fixtures'
 
 function renderLogin() {
   return render(
@@ -53,9 +54,7 @@ describe('Login', () => {
       vi.fn().mockResolvedValue({
         ok: false,
         status: 401,
-        json: async () => ({
-          erro: { codigo: 'CREDENCIAIS_INVALIDAS', mensagem: 'Usuario ou senha incorretos.' },
-        }),
+        json: async () => (erroExemplo('CREDENCIAIS_INVALIDAS', 'Usuario ou senha incorretos.')),
       }),
     )
 

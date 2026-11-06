@@ -71,6 +71,10 @@ BONUS_STAT_FIXO: Final[int] = 5
 BONUS_HP_FIXO: Final[int] = 10
 HP_MINIMO_VIVO: Final[int] = 1
 
+# hp_atual_pct e guardado em porcento (0..100), e nao como fracao: e o que a
+# coluna hp_atual_pct grava e o que o desgaste da expedicao soma e subtrai.
+BASE_PERCENTUAL: Final[int] = 100
+
 # --- Poder e dificuldade (SDD 4.3) -----------------------------------------
 
 SOMA_STATS_BASE_REFERENCIA: Final[int] = 600  # normalizador do bonus de stats

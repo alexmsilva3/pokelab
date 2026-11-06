@@ -29,3 +29,11 @@ class AvatarInvalido(ErroDeDominio):
 
 class KitInicialInvalido(ErroDeDominio):
     """A entrada do kit inicial nao corresponde ao que balance.py declara."""
+
+
+class HpAtualInvalido(ErroDeDominio):
+    """hp_atual_pct fora da faixa de 0 a 100."""
+
+
+class StatInvalido(ErroDeDominio):
+    """Um stat base ou efetivo chegou negativo."""

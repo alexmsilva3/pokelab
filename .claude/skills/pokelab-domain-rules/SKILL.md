@@ -54,8 +54,11 @@ O seed guarda o stat-base da especie. O que o individuo tem depende do nivel:
 ```
 hp_efetivo   = floor(hp_base * MULTIPLICADOR_STAT * nivel / DIVISOR_STAT_NIVEL) + nivel + BONUS_HP_FIXO
 stat_efetivo = floor(stat_base * MULTIPLICADOR_STAT * nivel / DIVISOR_STAT_NIVEL) + BONUS_STAT_FIXO
-hp_atual     = max(HP_MINIMO_VIVO, round(hp_efetivo * hp_atual_pct / 100))
+hp_atual     = 0  quando hp_atual_pct == 0 (nocauteado)
+hp_atual     = min(hp_efetivo, max(HP_MINIMO_VIVO, round(hp_efetivo * hp_atual_pct / 100)))
 ```
+
+O pct zero e tratado antes do piso: nocauteado e nocauteado, e mostrar 1 de HP mentiria sobre o estado. O piso existe para o problema oposto — um Pokemon a 2% de um HP alto nao pode aparecer como zero por arredondamento. Nocauteado nao e morto: ele se recupera no laboratorio (SDD 4.8).
 
 Sem IV, EV nem natureza na v1: dois Pikachu de nivel 20 sao identicos. Quando houver engine de combate turno a turno (ADR-003), a individualidade entra junto.
 

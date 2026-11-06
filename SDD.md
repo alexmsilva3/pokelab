@@ -242,8 +242,13 @@ O seed guarda os stats-base de cada espécie. O que um indivíduo tem de fato de
 ```
 hp_efetivo    = floor(hp_base * 2 * nivel / 100) + nivel + 10
 stat_efetivo  = floor(stat_base * 2 * nivel / 100) + 5     # demais stats
-hp_atual      = max(1, round(hp_efetivo * hp_atual_pct / 100))
+hp_atual      = 0                     se hp_atual_pct == 0
+hp_atual      = min(hp_efetivo, max(1, round(hp_efetivo * hp_atual_pct / 100)))   caso contrário
 ```
+
+O caso de `hp_atual_pct == 0` é tratado antes do piso de propósito: um Pokémon a zero por cento está **nocauteado**, e mostrar "1 / 45" na ficha mentiria sobre o estado dele. O piso de 1 existe para o outro problema — que um Pokémon a 2% de um HP alto não apareça como zero por arredondamento, parecendo nocauteado sem estar.
+
+Nocauteado não é morto: a questão 8 segue valendo, e o Pokémon se recupera passivamente no laboratório (seção 4.8).
 
 É a fórmula das gerações modernas sem IV, EV nem natureza. A v1 não tem individualidade dentro da espécie: dois Pikachu de nível 20 são idênticos. Isso é decisão, não simplificação preguiçosa — o professor administra espécies e níveis, e variação invisível entre indivíduos só adicionaria ruído a um jogo que não mostra batalha turno a turno. Quando houver engine de combate real (ADR-003), IVs entram junto.
 
@@ -540,8 +545,10 @@ Spec em [specs/002-credenciais-do-professor/](specs/002-credenciais-do-professor
 
 ---
 
-### Fase 3 — O Laboratório
+### Fase 3 — O Laboratório — CONCLUÍDA (2026-11-06)
 *Tela principal, acervo de Pokémon e Pokédex.*
+
+Spec em [specs/003-o-laboratorio/](specs/003-o-laboratorio/). 815 testes de backend e 35 de frontend. Revisão adversarial em quatro lentes: nenhum achado crítico, dois altos corrigidos e cobertos por regressão.
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|

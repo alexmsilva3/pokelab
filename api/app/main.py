@@ -1,14 +1,31 @@
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from starlette.staticfiles import StaticFiles
+from starlette.types import Scope
 
+from app.core.caminhos import DIR_SPRITES
 from app.core.config import get_settings
 from app.core.erros import ErroDeAplicacao
 from app.game.erros import ErroDeDominio
-from app.routers import auth, health, me
+from app.routers import auth, health, itens, me, pokedex, pokemon
 
 settings = get_settings()
+
+# Seed versionado (Artigo V): os arquivos nunca mudam sob o mesmo nome, entao
+# cache eterno e correto, sem precisar de hash no caminho (plan.md).
+CACHE_CONTROL_SPRITES = "public, max-age=31536000, immutable"
+
+
+class SpritesStaticFiles(StaticFiles):
+    """`StaticFiles` nao deixa configurar `Cache-Control`; isso faz por fora."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        resposta = await super().get_response(path, scope)
+        resposta.headers["Cache-Control"] = CACHE_CONTROL_SPRITES
+        return resposta
+
 
 app = FastAPI(
     title="PokeLab API",
@@ -104,3 +121,16 @@ async def tratar_erro_de_dominio(request: Request, exc: ErroDeDominio) -> JSONRe
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
+app.include_router(pokemon.router)
+app.include_router(pokedex.router)
+app.include_router(itens.router)
+
+# `check_dir=False`: o diretorio pode faltar num ambiente sem o acervo
+# montado (ver docker-compose.yml e o README sobre `/data`); o mount nao pode
+# derrubar o processo inteiro por causa disso, so a rota de sprites responde
+# 404 ate o volume existir.
+app.mount(
+    "/sprites",
+    SpritesStaticFiles(directory=str(DIR_SPRITES), check_dir=False),
+    name="sprites",
+)
