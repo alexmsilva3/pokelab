@@ -598,14 +598,15 @@ O laboratório nasce com **três treinadores e três iniciais**, para que distri
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
-| 5.1 | Modelos `Local`, `LocalEncontro`, `LocalDesbloqueado` | `pokelab-api` | — |
-| 5.2 | `GET /map`: locais desbloqueados, destinos válidos e bloqueados com o motivo | `pokelab-domain` + `pokelab-api` | `pokelab-domain-rules` |
-| 5.3 | Regra de adjacência (invariante 6) e cálculo do local de origem da expedição | `pokelab-domain` | `pokelab-domain-rules` |
-| 5.4 | `GET /map/{id}`: dificuldade, faixa de nível, duração estimada, espécies já vistas ali | `pokelab-api` | — |
-| 5.5 | Tela Mapa: lista hierárquica por região com estado por local (desbloqueado / disponível / bloqueado) | `pokelab-frontend` | `pokelab-ui-kit` |
-| 5.6 | Testes: destino não adjacente rejeitado; desbloqueio expande o conjunto de destinos | `pokelab-test` | — |
+| 5.1 | ~~Modelos `Local`, `LocalEncontro`, `LocalDesbloqueado`~~ — já prontos nas Fases 1 e 2 | — | — |
+| 5.2 | `game/mapa.py`: adjacência (invariante 6), alcance, origem ótima por custo de travessia e duração estimada | `pokelab-domain` | `pokelab-domain-rules` |
+| 5.3 | Modelo `PokedexAvistamento` e migração. A Fase 5 só lê; quem escreve é a tarefa 7.10 | `pokelab-api` | — |
+| 5.4 | `GET /map`: os dez locais com estado, origem ótima, duração estimada, e o que falta desbloquear | `pokelab-api` | `pokelab-api-conventions` |
+| 5.5 | `GET /map/{id}`: dificuldade, faixa de nível, duração estimada e espécies **já avistadas ali** — nunca o pool real | `pokelab-api` | `pokelab-api-conventions` |
+| 5.6 | Tela Mapa: lista ordenada por distância, com estado por local e o caminho até os bloqueados | `pokelab-frontend` | `pokelab-ui-kit` |
+| 5.7 | Testes: destino não adjacente rejeitado; desbloqueio expande o conjunto de destinos; pool de encontros não vaza | `pokelab-test` | — |
 
-**Pronto quando:** o mapa mostra corretamente o que está aberto, o que é alcançável e o que falta para abrir o resto.
+**Pronto quando:** o mapa mostra corretamente o que está aberto, o que é alcançável, quanto tempo custa chegar a cada lugar e o que falta para abrir o resto — sem revelar que Pokémon moram num local que o laboratório nunca visitou.
 
 ---
 
