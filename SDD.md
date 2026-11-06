@@ -235,7 +235,21 @@ Com `LIMITE_TREINADORES_NIVEL_1 = 3`, o laboratório nível 1 comporta três tre
 
 Esse limite é diferente de `TREINADORES_NO_KIT_INICIAL`, que vale 1: o laboratório nasce com um treinador e espaço para mais dois. Os dois números já foram confundidos uma vez por terem nome parecido — daí os nomes atuais, explícitos.
 
-### 4.2 Poder do time e dificuldade do local
+### 4.2 Stats efetivos
+
+O seed guarda os stats-base de cada espécie. O que um indivíduo tem de fato depende do nível:
+
+```
+hp_efetivo    = floor(hp_base * 2 * nivel / 100) + nivel + 10
+stat_efetivo  = floor(stat_base * 2 * nivel / 100) + 5     # demais stats
+hp_atual      = max(1, round(hp_efetivo * hp_atual_pct / 100))
+```
+
+É a fórmula das gerações modernas sem IV, EV nem natureza. A v1 não tem individualidade dentro da espécie: dois Pikachu de nível 20 são idênticos. Isso é decisão, não simplificação preguiçosa — o professor administra espécies e níveis, e variação invisível entre indivíduos só adicionaria ruído a um jogo que não mostra batalha turno a turno. Quando houver engine de combate real (ADR-003), IVs entram junto.
+
+O HP tem fórmula própria, com `+ nivel + 10` em vez de `+ 5`, para que criaturas de nível baixo não morram em um golpe — é o mesmo motivo dos jogos originais.
+
+### 4.3 Poder do time e dificuldade do local
 
 ```
 poder_pokemon = nivel * (1 + (soma_stats_base / 600)) * (hp_atual_pct / 100)
@@ -254,7 +268,7 @@ p_vitoria = clamp(1 / (1 + e^(-2.5 * (razao - 1))), 0.05, 0.95)
 
 **Conforme a ideia original, a dificuldade da expedição é função do nível dos Pokémon que o treinador recebeu** — ela aparece no `razao` acima, e é o que o professor manipula ao montar o time.
 
-### 4.3 Duração da expedição
+### 4.4 Duração da expedição
 
 A duração é a soma de dois tempos com significados diferentes: **atravessar** o caminho até o destino, e **explorar** o destino.
 
@@ -273,7 +287,7 @@ duracao = (tempo_viagem + tempo_exploracao)
 
 Esta formulação tem três consequências deliberadas. **Desbloquear um local encurta de verdade** as expedições que partem dele — uma ida a Mt. Moon partindo de Pallet leva 55 minutos, partindo de Route 3 leva 29. Sem isso, o desbloqueio só destravaria destinos, e o SDD prometia mais que isso. **Nenhum local tem duração arbitrária**: ela emerge do caminho, e corrigir o mapa corrige os tempos. E **o rendimento deixa de ser refém do relógio** — ver 4.4.
 
-### 4.4 Encontros
+### 4.5 Encontros
 
 ```
 qtd_encontros = max(1, encontros_base_destino + aleatorio(-1, +1))
@@ -288,7 +302,7 @@ Para cada encontro, sorteia-se a espécie pelo `peso` da tabela `LocalEncontro` 
 - **Vitória:** evento `BATALHA`, distribui EXP, possível `SUBIU_NIVEL` e `EVOLUCAO`, reduz `hp_atual_pct` do time em 3 a 8 pontos.
 - **Derrota:** evento `CONTRATEMPO`, consome uma Poção ou um Revive se houver, reduz `hp_atual_pct` em 15 a 30. Três derrotas sem itens de cura **encerram a expedição em falha** e o treinador volta mais cedo e sem capturas.
 
-### 4.5 Captura
+### 4.6 Captura
 
 Só há tentativa de captura após vitória, e só se restar Pokébola na carga e espaço na bagagem.
 
@@ -312,13 +326,13 @@ Esse é um trade-off deliberado e não um efeito colateral. Time grande vence ma
 
 Atingida a capacidade, o treinador para de capturar mas **continua registrando** na Pokédex tudo que enfrenta. Uma expedição com a bagagem cheia ainda produz conhecimento.
 
-### 4.6 Descoberta e desbloqueio
+### 4.7 Descoberta e desbloqueio
 
 Uma espécie vista pela primeira vez gera `DESCOBERTA` e marca `visto` na Pokédex mesmo sem captura.
 
 Uma expedição `CONCLUIDA_SUCESSO` grava `LocalDesbloqueado` para o destino. A partir daí, novas expedições podem partir desse local, e seus vizinhos tornam-se destinos válidos. O laboratório (Pallet) é o único local desbloqueado na criação do perfil.
 
-### 4.7 Pós-expedição
+### 4.8 Pós-expedição
 
 O treinador entra em `DESCANSANDO` por um período proporcional ao desgaste e depois volta a `DISPONIVEL`. Pokémon retornam com o `hp_atual_pct` reduzido, recuperado passivamente ao longo do tempo enquanto estiverem no laboratório.
 
@@ -326,7 +340,7 @@ O treinador entra em `DESCANSANDO` por um período proporcional ao desgaste e de
 
 A consequência de design importa: um professor que nunca despachou ninguém para Mt. Moon não sabe que existe Clefairy lá. O mapa não nasce preenchido; ele é preenchido pelo trabalho dos treinadores.
 
-### 4.8 Entregas
+### 4.9 Entregas
 
 A Central de Entregas é a fonte de moeda do jogo e o segundo uso para um treinador.
 
@@ -584,7 +598,7 @@ Spec em [specs/002-credenciais-do-professor/](specs/002-credenciais-do-professor
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
 | 6.1 | Modelos `Expedicao`, `ExpedicaoItem`, `ExpedicaoEvento` | `pokelab-api` | — |
-| 6.2 | `game/expedition.py`: cálculo de duração (4.3), dificuldade e poder do time (4.2) | `pokelab-domain` | `pokelab-domain-rules` |
+| 6.2 | `game/expedition.py`: cálculo de duração (4.4), dificuldade e poder do time (4.3) | `pokelab-domain` | `pokelab-domain-rules` |
 | 6.3 | `POST /expeditions`: valida invariantes 3, 6 e 9, debita carga, grava `seed`, `started_at` e `eta`. O limite de expedições simultâneas é o número de treinadores disponíveis, não uma constante | `pokelab-api` | `pokelab-api-conventions` |
 | 6.4 | `GET /expeditions` com tempo restante calculado no servidor | `pokelab-api` | — |
 | 6.5 | `DELETE /expeditions/{id}`: aborto sem recompensa, itens não devolvidos | `pokelab-api` | — |
@@ -605,8 +619,8 @@ Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqu
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
 | 7.1 | `game/experience.py`: ganho de EXP e curvas de crescimento (4.1), com testes de tabela | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.2 | `game/power.py`: poder do Pokémon, do time e dificuldade (4.2) | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.3 | `game/capture.py`: probabilidade e slots de captura (4.5) | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.2 | `game/power.py`: poder do Pokémon, do time e dificuldade (4.3) | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.3 | `game/capture.py`: probabilidade e slots de captura (4.6) | `pokelab-domain` | `pokelab-domain-rules` |
 | 7.4 | `game/encounter.py`: interface `EncounterResolver` e implementação probabilística (ADR-003) | `pokelab-domain` | `pokelab-domain-rules` |
 | 7.5 | `game/expedition.py::resolve()`: loop de encontros, consumo de itens, desgaste, falha por 3 derrotas, geração ordenada de eventos | `pokelab-domain` | `pokelab-domain-rules` |
 | 7.6 | Textos narrativos dos eventos em português, por tipo, com interpolação de nomes e números | `pokelab-domain` | `pokelab-ui-kit` |
@@ -820,6 +834,6 @@ Com `DIVISOR_QUANTIDADE_POR_CAPTURA = 85`: Rattata, Caterpie e Pidgey (taxa 255)
 14. ~~Host do repositório.~~ **Resolvido 2026-11-05: GitHub pessoal.** Workflow em `.github/workflows/ci.yml`, chamando `ci/pipeline.sh`.
 17. **Evolução fora da v1**: 100 das 151 espécies não evoluem por nível. Parte nunca evolui (Mew, Tauros), parte depende de pedra (Pikachu→Raichu, Eevee) ou troca (Kadabra, Machoke). Entram numa versão posterior junto com uma mecânica de itens de evolução, ou ficam de fora para sempre? **Adiado deliberadamente para a tarefa 9.7, após a v1 estar jogável.**
 
-18. ~~Piso de encontros achata metade do mapa.~~ **Resolvido 2026-11-05: desacoplado.** `encontros_base` por local no seed, e a duração passou a ser calculada pelo caminho (seções 4.3 e 4.4). Os números de travessia e de encontros foram escolhidos por estimativa e ainda não por simulação — a calibragem é da Fase 8, tarefa 8.3.
+18. ~~Piso de encontros achata metade do mapa.~~ **Resolvido 2026-11-05: desacoplado.** `encontros_base` por local no seed, e a duração passou a ser calculada pelo caminho (seções 4.4 e 4.5). Os números de travessia e de encontros foram escolhidos por estimativa e ainda não por simulação — a calibragem é da Fase 8, tarefa 8.3.
 16. **Avatar do treinador**: o ADR-002 cobre apenas sprites de Pokémon. Sugiro avatar gerado (iniciais sobre cor determinística pelo id do treinador) — zero asset, zero licença, e substituível depois sem migração.
 15. Idioma da interface: português apenas, ou nomes de Pokémon e locais em inglês com o restante em português? (Assumi a segunda opção, que é o padrão da comunidade.)

@@ -47,6 +47,18 @@ limite_treinadores = TREINADORES_INICIAIS + (nivel_laboratorio - 1)
 
 Nao existe limite fixo de expedicoes simultaneas. O gargalo e o numero de treinadores disponiveis, e portanto o nivel do laboratorio.
 
+## Stats efetivos
+
+O seed guarda o stat-base da especie. O que o individuo tem depende do nivel:
+
+```
+hp_efetivo   = floor(hp_base * MULTIPLICADOR_STAT * nivel / DIVISOR_STAT_NIVEL) + nivel + BONUS_HP_FIXO
+stat_efetivo = floor(stat_base * MULTIPLICADOR_STAT * nivel / DIVISOR_STAT_NIVEL) + BONUS_STAT_FIXO
+hp_atual     = max(HP_MINIMO_VIVO, round(hp_efetivo * hp_atual_pct / 100))
+```
+
+Sem IV, EV nem natureza na v1: dois Pikachu de nivel 20 sao identicos. Quando houver engine de combate turno a turno (ADR-003), a individualidade entra junto.
+
 ## Poder e dificuldade
 
 ```

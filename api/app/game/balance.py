@@ -60,7 +60,18 @@ CURVA_MEDIA_LENTA_D: Final[float] = 140.0
 BYTES_DIGEST_AVATAR: Final[int] = 8  # bytes do digest usados para sortear a cor
 LETRAS_INICIAIS_AVATAR: Final[int] = 2  # quantas letras o circulo do avatar mostra
 
-# --- Poder e dificuldade (SDD 4.2) -----------------------------------------
+# --- Stats efetivos (SDD 4.2) ----------------------------------------------
+
+# Formula das geracoes modernas sem IV, EV nem natureza: a v1 nao tem
+# individualidade dentro da especie. HP tem bonus proprio para que nivel baixo
+# nao morra de um golpe.
+MULTIPLICADOR_STAT: Final[int] = 2
+DIVISOR_STAT_NIVEL: Final[int] = 100
+BONUS_STAT_FIXO: Final[int] = 5
+BONUS_HP_FIXO: Final[int] = 10
+HP_MINIMO_VIVO: Final[int] = 1
+
+# --- Poder e dificuldade (SDD 4.3) -----------------------------------------
 
 SOMA_STATS_BASE_REFERENCIA: Final[int] = 600  # normalizador do bonus de stats
 BONUS_POR_NIVEL_TREINADOR: Final[float] = 0.03  # +3% de poder por nivel
