@@ -148,10 +148,23 @@ def test_porcentagem_minima_nunca_arredonda_para_zero():
 
 
 @pytest.mark.parametrize("hp_efetivo", [11, 19, 45, 105, 200])
-@pytest.mark.parametrize("pct", range(1, 101))
-def test_qualquer_porcentagem_positiva_mantem_o_pokemon_vivo(hp_efetivo, pct):
-    atual = hp_atual_absoluto(hp_efetivo, pct)
-    assert balance.HP_MINIMO_VIVO <= atual <= hp_efetivo
+def test_qualquer_porcentagem_positiva_mantem_o_pokemon_vivo(hp_efetivo):
+    """A propriedade vale para todo pct de 1 a 100, conferido aqui num laco.
+
+    Isto ja foi um parametrize sobre `range(1, 101)`, o que rendia 500 casos
+    coletados — sozinho, 41% da suite inteira do projeto. A propriedade e uma
+    so e quebra nos extremos, nao no meio: multiplicar o numero de casos
+    inflava o relatorio sem acrescentar confianca, e cada caso coletado custa
+    tempo de coleta em toda execucao.
+
+    O laco cobre exatamente a mesma faixa. O que se perde e o nome do pct no
+    relatorio quando falha, e por isso ele vai na mensagem do assert.
+    """
+    for pct in range(1, balance.BASE_PERCENTUAL + 1):
+        atual = hp_atual_absoluto(hp_efetivo, pct)
+        assert balance.HP_MINIMO_VIVO <= atual <= hp_efetivo, (
+            f"hp_efetivo={hp_efetivo}, pct={pct}, atual={atual}"
+        )
 
 
 def test_hp_absoluto_cresce_com_a_porcentagem():
