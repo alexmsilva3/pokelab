@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from app.game.mapa import LocalDesconhecido as _LocalDesconhecidoNoDominio
 from app.game.team import ErroDeTime
 
 
@@ -97,5 +98,21 @@ class ConflitoDeTime(ErroDeAplicacao):
     status_code: ClassVar[int] = 409
 
     def __init__(self, erro: ErroDeTime) -> None:
+        self.codigo = erro.codigo
+        super().__init__(str(erro), detalhes=erro.detalhes)
+
+
+class LocalNaoEncontrado(ErroDeAplicacao):
+    """Traduz `game.mapa.LocalDesconhecido` para 404 (criterio 10 da spec 005).
+
+    O mapa so le, entao este e o unico `ErroDeMapa` que esta rota pode
+    levantar: `GrafoInvalido`, `DestinoForaDeAlcance` e
+    `ParametroDeDuracaoInvalido` ou sao bug de seed, ou pertencem ao despacho
+    de expedicao que a Fase 6 implementa.
+    """
+
+    status_code: ClassVar[int] = 404
+
+    def __init__(self, erro: _LocalDesconhecidoNoDominio) -> None:
         self.codigo = erro.codigo
         super().__init__(str(erro), detalhes=erro.detalhes)

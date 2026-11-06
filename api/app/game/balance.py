@@ -106,6 +106,11 @@ REDUCAO_POR_NIVEL_TREINADOR: Final[float] = 0.02  # -2% de duracao por nivel
 REDUCAO_MAXIMA_TREINADOR: Final[float] = 0.40
 BONUS_ITENS_MAXIMO: Final[float] = 0.25
 
+# Piso da duracao, em minutos. Com a escala de tempo acelerada do ADR-004 a
+# conta chega a valores abaixo de um minuto, e uma expedicao de zero minuto
+# terminaria no mesmo instante em que parte: nao ha ida nem relatorio.
+DURACAO_MINIMA_MINUTOS: Final[int] = 1
+
 # --- Encontros (SDD 4.4) ---------------------------------------------------
 
 # A quantidade de encontros vem de encontros_base do destino, nao da duracao:

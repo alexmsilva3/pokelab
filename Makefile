@@ -1,4 +1,4 @@
-.PHONY: help setup lint test test-db build ci up down logs seed ingest conta-teste migrate revision shell-api clean
+.PHONY: help setup lint test test-db test-arquivos build ci up down logs seed ingest conta-teste migrate revision shell-api clean
 
 # O PokeLab roda lint e teste da API dentro de container, para nao depender do
 # toolchain Python local. Se preferir rodar nativamente, instale python3-venv e
@@ -19,6 +19,9 @@ test: ## Roda pytest e vitest
 
 test-db: ## Roda os testes que exigem Postgres (precisa de make up)
 	ci/pipeline.sh test-db
+
+test-arquivos: ## Roda so alguns testes. Uso: make test-arquivos a="tests/test_mapa.py"
+	ci/pipeline.sh test-arquivos $(a)
 
 build: ## Constroi as imagens Docker
 	ci/pipeline.sh build

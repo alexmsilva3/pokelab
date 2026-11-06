@@ -16,6 +16,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     func,
@@ -199,3 +200,43 @@ class PokedexEntrada(Base):
 
     def __repr__(self) -> str:
         return f"<PokedexEntrada {self.laboratorio_id}/{self.especie_id}>"
+
+
+class PokedexAvistamento(Base):
+    """Onde cada especie de um laboratorio ja apareceu (SDD 3.2, spec 005).
+
+    A Fase 5 so le esta tabela pelo mapa (`GET /map/{id}`, regra 9 da spec
+    005): nenhum endpoint desta fase escreve nela. Quem grava e a tarefa 7.10,
+    na descarga da Pokedex ao fim de cada expedicao. A tabela nasce agora, e
+    nao isolada na Fase 7, porque o mapa precisa de algo para consultar e a
+    migracao sai de graca junto das outras.
+
+    Chave composta em vez de surrogate, como `LocalEncontro` e `ItemEstoque`:
+    o par (laboratorio, especie, local) e naturalmente unico, e um id proprio
+    so acrescentaria uma coluna sem significado.
+    """
+
+    __tablename__ = "pokedex_avistamentos"
+    __table_args__ = (
+        # GET /map/{id} filtra por laboratorio e local, nunca por especie
+        # isolada: o prefixo (laboratorio_id, local_id) e o que essa consulta
+        # usa, e a chave primaria sozinha (laboratorio_id, especie_id,
+        # local_id) nao cobre esse prefixo.
+        Index("ix_pokedex_avistamentos_laboratorio_local", "laboratorio_id", "local_id"),
+    )
+
+    laboratorio_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("laboratorios.id"), primary_key=True
+    )
+    especie_id: Mapped[int] = mapped_column(ForeignKey("pokemon_especies.id"), primary_key=True)
+    local_id: Mapped[str] = mapped_column(String(50), ForeignKey("locais.id"), primary_key=True)
+
+    primeiro_visto_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    vezes_visto: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    especie: Mapped[PokemonEspecie] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<PokedexAvistamento {self.laboratorio_id}/{self.local_id}/{self.especie_id}>"

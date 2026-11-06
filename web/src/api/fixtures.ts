@@ -16,7 +16,10 @@ import type {
   EntradaPokedexCapturada,
   EntradaPokedexDesconhecida,
   EntradaPokedexVista,
+  EspecieAvistada,
   ItemEmEstoque,
+  LocalDetalhado,
+  LocalNoMapa,
   PerfilCompleto,
   PokemonDetalhe,
   PokemonResumo,
@@ -24,6 +27,7 @@ import type {
   Professor,
   RespostaItens,
   RespostaListaPokemon,
+  RespostaMapa,
   RespostaPokedex,
   RespostaTreinadores,
   ResumoLaboratorio,
@@ -281,6 +285,154 @@ export function previaTimeExemplo(sobrescritas: Partial<PreviaTime> = {}): Previ
     capacidade_bagagem: 5,
     valido: true,
     codigo: null,
+    ...sobrescritas,
+  }
+}
+
+// --- Mapa (spec 005) -----------------------------------------------------
+
+export function localNoMapaExemplo(sobrescritas: Partial<LocalNoMapa> = {}): LocalNoMapa {
+  return {
+    id: 'pallet-town',
+    nome: 'Pallet Town',
+    tipo: 'CIDADE',
+    nivel_dificuldade: 1,
+    nivel_selvagem_min: 2,
+    nivel_selvagem_max: 4,
+    estado: 'VISITADO',
+    origem_id: 'pallet-town',
+    origem_nome: 'Pallet Town',
+    duracao_estimada_minutos: 2,
+    proximo_passo_id: null,
+    proximo_passo_nome: null,
+    ...sobrescritas,
+  }
+}
+
+/**
+ * Os dez locais da v1, no estado de um laboratorio recem-criado: so Pallet
+ * Town visitada e Route 1 alcancavel (criterio 1 da spec 005). O restante
+ * exige visitar Route 1 primeiro, inclusive Pewter City e Cerulean City
+ * (criterios 2 e 3) — e ja sai na ordem de distancia que a tela deve respeitar.
+ */
+export function respostaMapaExemplo(sobrescritas: Partial<RespostaMapa> = {}): RespostaMapa {
+  const foraDeAlcanceAteRoute1 = (sobrescrita: Partial<LocalNoMapa>): LocalNoMapa =>
+    localNoMapaExemplo({
+      estado: 'FORA_DE_ALCANCE',
+      origem_id: null,
+      origem_nome: null,
+      duracao_estimada_minutos: null,
+      proximo_passo_id: 'route-1',
+      proximo_passo_nome: 'Route 1',
+      ...sobrescrita,
+    })
+
+  return {
+    items: [
+      localNoMapaExemplo(),
+      localNoMapaExemplo({
+        id: 'route-1',
+        nome: 'Route 1',
+        tipo: 'ROTA',
+        nivel_dificuldade: 1,
+        nivel_selvagem_min: 2,
+        nivel_selvagem_max: 5,
+        estado: 'ALCANCAVEL',
+        origem_id: 'pallet-town',
+        origem_nome: 'Pallet Town',
+        duracao_estimada_minutos: 7,
+      }),
+      foraDeAlcanceAteRoute1({
+        id: 'viridian-city',
+        nome: 'Viridian City',
+        tipo: 'CIDADE',
+        nivel_dificuldade: 2,
+        nivel_selvagem_min: 3,
+        nivel_selvagem_max: 6,
+      }),
+      foraDeAlcanceAteRoute1({
+        id: 'route-22',
+        nome: 'Route 22',
+        tipo: 'ROTA',
+        nivel_dificuldade: 5,
+        nivel_selvagem_min: 6,
+        nivel_selvagem_max: 10,
+      }),
+      foraDeAlcanceAteRoute1({
+        id: 'route-2',
+        nome: 'Route 2',
+        tipo: 'ROTA',
+        nivel_dificuldade: 2,
+        nivel_selvagem_min: 3,
+        nivel_selvagem_max: 6,
+      }),
+      foraDeAlcanceAteRoute1({
+        id: 'viridian-forest',
+        nome: 'Viridian Forest',
+        tipo: 'MASMORRA',
+        nivel_dificuldade: 3,
+        nivel_selvagem_min: 4,
+        nivel_selvagem_max: 8,
+      }),
+      foraDeAlcanceAteRoute1({
+        id: 'pewter-city',
+        nome: 'Pewter City',
+        tipo: 'CIDADE',
+        nivel_dificuldade: 3,
+        nivel_selvagem_min: 5,
+        nivel_selvagem_max: 9,
+      }),
+      foraDeAlcanceAteRoute1({
+        id: 'route-3',
+        nome: 'Route 3',
+        tipo: 'ROTA',
+        nivel_dificuldade: 4,
+        nivel_selvagem_min: 6,
+        nivel_selvagem_max: 10,
+      }),
+      foraDeAlcanceAteRoute1({
+        id: 'mt-moon',
+        nome: 'Mt. Moon',
+        tipo: 'MASMORRA',
+        nivel_dificuldade: 5,
+        nivel_selvagem_min: 7,
+        nivel_selvagem_max: 12,
+      }),
+      foraDeAlcanceAteRoute1({
+        id: 'cerulean-city',
+        nome: 'Cerulean City',
+        tipo: 'CIDADE',
+        nivel_dificuldade: 6,
+        nivel_selvagem_min: 10,
+        nivel_selvagem_max: 14,
+      }),
+    ],
+    visitados: 1,
+    total: 10,
+    ...sobrescritas,
+  }
+}
+
+export function especieAvistadaExemplo(
+  sobrescritas: Partial<EspecieAvistada> = {},
+): EspecieAvistada {
+  return {
+    especie_id: 16,
+    nome: 'Pidgey',
+    sprite: '16-front.png',
+    vezes_visto: 3,
+    primeiro_visto_em: '2026-01-01T12:00:00Z',
+    ...sobrescritas,
+  }
+}
+
+export function localDetalhadoExemplo(
+  sobrescritas: Partial<LocalDetalhado> = {},
+): LocalDetalhado {
+  return {
+    ...localNoMapaExemplo(),
+    encontros_base: 2,
+    especies_avistadas: [especieAvistadaExemplo()],
     ...sobrescritas,
   }
 }

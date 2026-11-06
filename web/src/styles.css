@@ -536,3 +536,144 @@ button:disabled {
   gap: var(--espaco-2);
   margin-top: var(--espaco-4);
 }
+
+/* --- Mapa (spec 005) --------------------------------------------------- */
+
+.tela-mapa {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--espaco-5);
+}
+
+.mapa-resumo {
+  color: var(--cor-texto-suave);
+}
+
+.mapa-layout {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--espaco-4);
+  align-items: start;
+  margin-top: var(--espaco-4);
+}
+
+.lista-locais-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--espaco-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cartao-local {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--espaco-1);
+  width: 100%;
+  padding: var(--espaco-3);
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  text-align: center;
+}
+
+.cartao-local[aria-pressed='true'] {
+  border-color: var(--cor-acento);
+}
+
+.cartao-local-nome {
+  font-weight: 600;
+}
+
+.cartao-local-info {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
+}
+
+.rotulo-estado-visitado {
+  color: var(--cor-sucesso);
+  border-color: var(--cor-sucesso);
+}
+
+.rotulo-estado-alcancavel {
+  color: var(--cor-acento);
+  border-color: var(--cor-acento);
+}
+
+.rotulo-estado-fora-de-alcance {
+  color: var(--cor-texto-suave);
+}
+
+.detalhe-local {
+  position: sticky;
+  top: var(--espaco-3);
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  padding: var(--espaco-4);
+}
+
+.detalhe-local-tipo {
+  color: var(--cor-texto-suave);
+}
+
+.detalhe-local-seletor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-1);
+  margin-bottom: var(--espaco-3);
+}
+
+.detalhe-local-seletor select {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: var(--espaco-2);
+  border-radius: var(--raio);
+  border: 1px solid var(--cor-borda);
+  background: var(--cor-fundo);
+  color: var(--cor-texto);
+}
+
+.detalhe-local-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--espaco-2);
+  margin: var(--espaco-3) 0;
+}
+
+.detalhe-local-stats dt {
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
+}
+
+.detalhe-local-stats dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.lista-especies-avistadas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-2);
+  margin: var(--espaco-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lista-especies-avistadas li {
+  display: flex;
+  align-items: center;
+  gap: var(--espaco-2);
+}
+
+.especie-avistada-nome {
+  font-weight: 600;
+}
+
+.especie-avistada-vezes {
+  color: var(--cor-texto-suave);
+  font-size: 0.8rem;
+}

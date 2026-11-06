@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     secret_key: str = SECRET_KEY_DESENVOLVIMENTO
     access_token_expire_minutes: int = 1440
 
-    # ADR-004: divide a duracao de toda expedicao. 1.0 = tempo real.
+    # ADR-004: multiplica a duracao de toda expedicao. 1.0 = tempo real,
+    # 0.01 = vinte minutos viram doze segundos.
     expedition_time_scale: float = 1.0
 
     @property

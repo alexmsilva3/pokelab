@@ -18,6 +18,10 @@ services:
   web:
     build:
       target: dev
+    # Com o UID do host: o container escreve em node_modules (cache do Vite,
+    # arquivos temporarios de config) e sem isso esses arquivos nascem de root
+    # e o `npm run test` do host passa a falhar com EACCES.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - ./web:/app
       # Volume anonimo: preserva o node_modules instalado no build, que a

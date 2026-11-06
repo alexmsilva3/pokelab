@@ -249,6 +249,66 @@ export interface ComposicaoTimeEntrada {
   pokemon_ids: string[]
 }
 
+// --- Mapa (spec 005) -----------------------------------------------------
+
+export type TipoLocal = 'CIDADE' | 'ROTA' | 'MASMORRA'
+
+/** Os tres estados da regra 2 da spec 005, no mesmo nome que `game/mapa.py` usa. */
+export type EstadoLocal = 'VISITADO' | 'ALCANCAVEL' | 'FORA_DE_ALCANCE'
+
+/**
+ * Linha de GET /map (plan.md, secao "Contratos de API"). `origem_id`,
+ * `origem_nome` e `duracao_estimada_minutos` vem nulos quando o local esta
+ * fora de alcance; `proximo_passo_id` e `proximo_passo_nome` vem nulos quando
+ * ele ja e um destino valido (visitado ou alcancavel), porque nao falta nada.
+ */
+export interface LocalNoMapa {
+  id: string
+  nome: string
+  tipo: TipoLocal
+  nivel_dificuldade: number
+  nivel_selvagem_min: number
+  nivel_selvagem_max: number
+  estado: EstadoLocal
+  origem_id: string | null
+  origem_nome: string | null
+  duracao_estimada_minutos: number | null
+  proximo_passo_id: string | null
+  proximo_passo_nome: string | null
+}
+
+export interface RespostaMapa {
+  items: LocalNoMapa[]
+  /** Quantos dos locais do mapa ja foram visitados pelo laboratorio. */
+  visitados: number
+  total: number
+}
+
+/**
+ * Uma especie avistada num local (plan.md). So aparece o que os treinadores
+ * do proprio laboratorio ja avistaram ali (regra 9 da spec 005) — nunca a
+ * tabela de encontros do seed, e nunca uma contagem do que falta descobrir
+ * (regra 10): um local nunca visitado manda `especies_avistadas: []`, nao um
+ * numero de quantas especies existem.
+ */
+export interface EspecieAvistada {
+  especie_id: number
+  nome: string
+  sprite: string
+  vezes_visto: number
+  primeiro_visto_em: string
+}
+
+/**
+ * Corpo de GET /map/{id}: os mesmos campos de LocalNoMapa, mais o que so faz
+ * sentido ao abrir o local — quantos encontros a expedicao gera e o que foi
+ * avistado ali.
+ */
+export interface LocalDetalhado extends LocalNoMapa {
+  encontros_base: number
+  especies_avistadas: EspecieAvistada[]
+}
+
 /**
  * Resposta da previa (plan.md): valida sem gravar. Quando a composicao e
  * recusada, `poder` e `capacidade_bagagem` descrevem o time ATUAL do

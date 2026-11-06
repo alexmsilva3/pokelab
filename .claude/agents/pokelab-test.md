@@ -31,8 +31,11 @@ Para corrigir um bug, o primeiro passo e o teste que falha. Se o teste passa ant
 
 ## Como rodar
 
-Backend: `docker run --rm -v "$PWD/api:/src" -w /src python:3.12-slim sh -c "pip install -q -e '.[dev]' && pytest -q"`
+Backend sem banco: `make test`
+Backend com Postgres: `make test-db` (exige `make up`)
+Um arquivo so: `make test-arquivos a=tests/test_auth.py`
 Frontend: `cd web && npm run test -- --run`
-Tudo: `make test`
+
+NUNCA monte um `docker run ... pip install` a mao. O `ci/pipeline.sh` usa uma imagem com as dependencias ja instaladas; instalar do zero custa 1m40 contra 3 segundos, e isso multiplicado por cada execucao de cada agente somava dezenas de minutos por fase.
 
 Nomes de teste em portugues, descrevendo o comportamento: `test_quarto_pokemon_no_time_e_rejeitado`.

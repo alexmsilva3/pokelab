@@ -81,7 +81,9 @@ O servidor não simula turnos. Para cada encontro, compara o poder efetivo do ti
 
 A expedição grava `started_at` e `eta` no banco. O progresso corre com o navegador fechado. A resolução é **preguiçosa e idempotente**: ao consultar uma expedição cujo `eta` já passou e que ainda está `EM_CURSO`, o servidor resolve, persiste e devolve o resultado — dentro de uma transação com lock na linha.
 
-Uma variável de ambiente `EXPEDITION_TIME_SCALE` (padrão `1.0`) divide todas as durações. Em dev e em teste vale `0.01`, transformando 20 minutos em 12 segundos.
+Uma variável de ambiente `EXPEDITION_TIME_SCALE` (padrão `1.0`) **multiplica** todas as durações. Em dev e em teste vale `0.01`, transformando 20 minutos em 12 segundos.
+
+O documento dizia "divide" até a Fase 5, contra o que o próprio ADR e o `.env.example` descreviam — dividir por `0.01` deixaria as expedições cem vezes mais longas em desenvolvimento, exatamente o oposto do pretendido. A implementação seguiu a fórmula escrita, o revisor pegou, e o texto é que foi corrigido.
 
 **Motivo:** mantém a fidelidade ao loop assíncrono sem exigir um worker/scheduler na v1, e sem tornar o desenvolvimento insuportável.
 
@@ -290,7 +292,7 @@ tempo_exploracao = encontros_base_destino * MINUTOS_POR_ENCONTRO
 duracao = (tempo_viagem + tempo_exploracao)
         * (1 - min(nivel_treinador * 0.02, 0.40))     # treinador experiente é mais rápido
         * (1 - bonus_itens)                            # carga de suporte acelera
-        / EXPEDITION_TIME_SCALE
+        * EXPEDITION_TIME_SCALE
 ```
 
 `bonus_itens` é limitado a 0.25. Custo de travessia por tipo: cidade 3 min, rota 4 min, masmorra 8 min.
@@ -366,7 +368,7 @@ A Central de Entregas é a fonte de moeda do jogo e o segundo uso para um treina
 duracao_entrega = tempo_viagem(laboratorio, cidade_destino)
                 * MULTIPLICADOR_IDA_E_VOLTA
                 * (1 - min(nivel_treinador * 0.02, 0.40))
-                / EXPEDITION_TIME_SCALE
+                * EXPEDITION_TIME_SCALE
 ```
 
 **Conclusão.** Os Pokémon entregues saem do laboratório **em definitivo** — foi isso que se vendeu. Em troca:
@@ -593,8 +595,10 @@ O laboratório nasce com **três treinadores e três iniciais**, para que distri
 
 ---
 
-### Fase 5 — Mapa de Kanto
+### Fase 5 — Mapa de Kanto — CONCLUÍDA (2026-11-06)
 *Grafo de locais, progressão e desbloqueio.*
+
+Spec em [specs/005-mapa-de-kanto/](specs/005-mapa-de-kanto/). 1062 testes de backend e 65 de frontend. Revisão adversarial em quatro lentes: nenhum crítico, e o achado mais importante foi a contradição de `EXPEDITION_TIME_SCALE`, que estava no próprio SDD.
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|

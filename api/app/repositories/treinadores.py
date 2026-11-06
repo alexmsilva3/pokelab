@@ -41,6 +41,23 @@ def listar(sessao: Session, laboratorio_id: uuid.UUID) -> list[Treinador]:
     return list(sessao.scalars(consulta))
 
 
+def buscar_por_id(
+    sessao: Session, laboratorio_id: uuid.UUID, treinador_id: uuid.UUID
+) -> Treinador | None:
+    """O treinador so com as colunas proprias, sem o time.
+
+    Para quem precisa apenas do nivel — caso de `GET /map/{id}?treinador_id=`,
+    que estima a duracao da ida — carregar o time e a especie de cada membro
+    seria trabalho que ninguem le. Escopado ao laboratorio, como sempre:
+    um id de outro laboratorio nao existe para quem pergunta (404, nunca 403).
+    """
+    return sessao.scalar(
+        select(Treinador).where(
+            Treinador.laboratorio_id == laboratorio_id, Treinador.id == treinador_id
+        )
+    )
+
+
 def buscar_detalhe(
     sessao: Session, laboratorio_id: uuid.UUID, treinador_id: uuid.UUID
 ) -> Treinador | None:

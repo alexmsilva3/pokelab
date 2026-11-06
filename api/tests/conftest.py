@@ -24,6 +24,7 @@ TABELAS_DE_ESTADO = (
     "pokemon_instancias",
     "treinadores",
     "pokedex_entradas",
+    "pokedex_avistamentos",
     "locais_desbloqueados",
     "item_estoques",
     "laboratorios",

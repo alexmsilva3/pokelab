@@ -31,4 +31,6 @@ A resolucao de expedicao devolve um resultado **e uma lista ordenada de eventos*
 
 Teste de tabela para formulas: entradas conhecidas, saidas esperadas, uma linha por caso. Teste de propriedade para invariantes: nivel nunca passa de 100, probabilidade sempre entre o minimo e o maximo, estoque nunca negativo.
 
-Rode `docker run --rm -v "$PWD/api:/src" -w /src python:3.12-slim sh -c "pip install -q -e '.[dev]' && pytest -q"` antes de dar a tarefa por pronta.
+Rode `make test` (ou `make test-db`, com o compose de pe) antes de dar a tarefa por pronta.
+
+NUNCA monte um `docker run ... pip install` a mao: `ci/pipeline.sh` ja usa uma imagem com as dependencias instaladas, e instalar do zero custa 1m40 contra 3 segundos. Para rodar so os seus modulos, use `make test-arquivos a=tests/test_game_X.py`.

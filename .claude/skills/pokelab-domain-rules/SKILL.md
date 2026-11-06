@@ -87,12 +87,12 @@ tempo_exploracao = encontros_base_destino * MINUTOS_POR_ENCONTRO
 duracao = (tempo_viagem + tempo_exploracao)
         * (1 - min(nivel_treinador * 0.02, 0.40))
         * (1 - bonus_itens)
-        / EXPEDITION_TIME_SCALE
+        * EXPEDITION_TIME_SCALE
 ```
 
 O caminho e a menor rota no grafo de vizinhanca entre a origem da expedicao e o destino. A origem e o local desbloqueado de onde o treinador parte, nao necessariamente o laboratorio — e por isso que desbloquear encurta expedicoes de verdade.
 
-`bonus_itens` limitado a 0.25. `EXPEDITION_TIME_SCALE` vem da configuracao (ADR-004) e e o unico valor desta skill que **nao** mora em `balance.py` — e ambiente, nao calibragem. O dominio recebe esse valor como parametro; nunca o le do ambiente (Artigo I).
+`bonus_itens` limitado a 0.25. `EXPEDITION_TIME_SCALE` MULTIPLICA (0.01 acelera cem vezes; dividir deixaria cem vezes mais lento) e vem da configuracao (ADR-004) e e o unico valor desta skill que **nao** mora em `balance.py` — e ambiente, nao calibragem. O dominio recebe esse valor como parametro; nunca o le do ambiente (Artigo I).
 
 ## Encontros
 
@@ -137,7 +137,7 @@ geracao:  1 a ESPECIES_MAXIMAS_POR_ENTREGA especies distintas, sorteadas do que 
           professor ja viu, peso PESO_ESPECIE_CAPTURADA para o capturado e
           PESO_ESPECIE_AVISTADA para o so avistado
 duracao:  tempo_viagem(laboratorio, destino) * MULTIPLICADOR_IDA_E_VOLTA
-          * (1 - min(nivel_treinador * 0.02, 0.40)) / EXPEDITION_TIME_SCALE
+          * (1 - min(nivel_treinador * 0.02, 0.40)) * EXPEDITION_TIME_SCALE
 moedas:   soma por Pokemon de (MOEDA_BASE + nivel * MOEDA_POR_NIVEL)
           * (1 + tempo_viagem / MINUTOS_PARA_BONUS_DISTANCIA)
 ```

@@ -1,0 +1,20 @@
+# Imagem de teste e lint, com as dependencias ja instaladas.
+#
+# Existe porque `pip install -e '.[dev]'` leva cerca de 1m40 e rodava do zero a
+# cada invocacao de teste. Com varios agentes rodando a suite algumas vezes
+# cada, isso somava dezenas de minutos por fase — mais tempo instalando do que
+# testando.
+#
+# A imagem se reconstroi sozinha quando pyproject.toml muda; enquanto nao muda,
+# o layer de dependencias vem do cache e a suite comeca na hora.
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+WORKDIR /src/api
+
+# Só o pyproject: o codigo chega por volume em tempo de execucao, entao editar
+# uma linha de app/ nao invalida o layer caro.
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir -e ".[dev]" && pip install --no-cache-dir ruff
+
+WORKDIR /src
