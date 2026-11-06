@@ -1,4 +1,4 @@
-.PHONY: help setup lint test test-db test-arquivos build ci up down logs seed ingest conta-teste migrate revision shell-api clean
+.PHONY: help setup lint test test-db test-arquivos build ci up down logs seed ingest conta-teste limpar-testes migrate revision shell-api clean
 
 # O PokeLab roda lint e teste da API dentro de container, para nao depender do
 # toolchain Python local. Se preferir rodar nativamente, instale python3-venv e
@@ -63,6 +63,9 @@ lint-local: ## Lint sem Docker (exige api/.venv e web/node_modules)
 test-local: ## Testes sem Docker
 	cd api && .venv/bin/pytest -q
 	cd web && npm run test -- --run
+
+limpar-testes: ## Remove containers de teste que tenham ficado para tras
+	ci/pipeline.sh limpar
 
 clean:
 	rm -rf api/.venv api/.pytest_cache api/.ruff_cache web/node_modules web/dist

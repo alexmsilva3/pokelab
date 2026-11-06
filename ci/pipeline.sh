@@ -6,7 +6,7 @@
 # (GitHub Actions, Azure Pipelines, GitLab CI) e apenas um invocador de tres
 # linhas que chama daqui, para que trocar de host nao reescreva a verificacao.
 #
-# Uso: ci/pipeline.sh [lint|test|test-db|test-arquivos <alvos>|build|all]
+# Uso: ci/pipeline.sh [lint|test|test-db|test-arquivos <alvos>|build|limpar|all]
 
 set -euo pipefail
 
@@ -37,6 +37,66 @@ imagem_de_teste() {
   printf '%s' "$tag"
 }
 
+# --- Ciclo de vida dos containers de teste --------------------------------
+#
+# `docker run --rm` remove o container quando ele TERMINA. Nao cobre o caso em
+# que o container nao termina, nem o caso em que quem o lancou morre antes
+# dele: o daemon e o dono, e o processo que chamou `docker run` ir embora nao
+# derruba nada.
+#
+# Foi assim que apareceram oito containers pendurados, alguns por duas horas,
+# segurando locks no Postgres e fazendo a suite levar dez vezes mais.
+#
+# Tres defesas: nome previsivel (da para achar e matar), teto de tempo (trava
+# vira falha em minutos, nao em horas) e trap de saida (sair por qualquer
+# motivo leva o container junto).
+
+PREFIXO_CONTAINER="pokelab_teste"
+# Teto por execucao. A suite completa leva ~90s; cinco minutos e folga generosa
+# e ainda assim curto o bastante para uma trava nao virar problema de horas.
+TIMEOUT_TESTE_SEGUNDOS="${TIMEOUT_TESTE_SEGUNDOS:-300}"
+
+_containers_desta_execucao=()
+
+# Remove o que esta execucao criou, aconteca o que acontecer com o script.
+limpar_containers() {
+  local nome
+  for nome in "${_containers_desta_execucao[@]:-}"; do
+    [ -n "$nome" ] && docker rm -f "$nome" >/dev/null 2>&1 || true
+  done
+  _containers_desta_execucao=()
+}
+trap limpar_containers EXIT INT TERM
+
+# Containers de execucoes anteriores que ficaram para tras. Roda antes de
+# comecar, porque e justamente o lixo antigo que segura o lock do banco.
+limpar_orfaos() {
+  local antigos
+  antigos="$(docker ps -q --filter "name=^${PREFIXO_CONTAINER}" 2>/dev/null)"
+  [ -n "$antigos" ] || return 0
+  info "removendo containers de teste de execucoes anteriores" >&2
+  # shellcheck disable=SC2086
+  docker rm -f $antigos >/dev/null 2>&1 || true
+}
+
+# Um `docker run` que nao deixa rastro: nome proprio, teto de tempo e remocao
+# garantida pelo trap.
+rodar_container() {
+  local nome status
+  nome="${PREFIXO_CONTAINER}_$$_${#_containers_desta_execucao[@]}"
+  _containers_desta_execucao+=("$nome")
+
+  status=0
+  timeout --signal=TERM --kill-after=20s "$TIMEOUT_TESTE_SEGUNDOS" \
+    docker run --name "$nome" --rm "$@" || status=$?
+
+  if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+    echo "container de teste passou de ${TIMEOUT_TESTE_SEGUNDOS}s e foi derrubado" >&2
+  fi
+  docker rm -f "$nome" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 # node_modules do host, quando existe, em vez de `npm ci` a cada execucao.
 # Host e container sao Linux x64, entao os binarios nativos servem aos dois.
 comando_node() {
@@ -49,11 +109,11 @@ comando_node() {
 
 lint() {
   info "lint: ruff (api)"
-  docker run --rm -v "$RAIZ:/src" -w /src/api "$(imagem_de_teste)" \
+  rodar_container -v "$RAIZ:/src" -w /src/api "$(imagem_de_teste)" \
     sh -c "ruff check app tests ../tools && ruff format --check app tests ../tools"
 
   info "lint: eslint (web)"
-  docker run --rm -v "$RAIZ/web:/src" -w /src node:24-alpine \
+  rodar_container -v "$RAIZ/web:/src" -w /src node:24-alpine \
     sh -c "$(comando_node 'npm run lint')"
 }
 
@@ -61,10 +121,10 @@ test_suite() {
   info "test: pytest (api)"
   # O repositorio inteiro e montado porque os testes de integridade leem
   # data/seed/ e data/sprites/. Os testes de carga pulam sozinhos sem Postgres.
-  docker run --rm -v "$RAIZ:/src" -w /src/api "$(imagem_de_teste)" pytest -q
+  rodar_container -v "$RAIZ:/src" -w /src/api "$(imagem_de_teste)" pytest -q
 
   info "test: vitest (web)"
-  docker run --rm -v "$RAIZ/web:/src" -w /src node:24-alpine \
+  rodar_container -v "$RAIZ/web:/src" -w /src node:24-alpine \
     sh -c "$(comando_node 'npm run test -- --run')"
 }
 
@@ -96,7 +156,7 @@ test_db() {
     flock 9
   fi
 
-  docker run --rm --network "$rede" -v "$RAIZ:/src" -w /src/api \
+  rodar_container --network "$rede" -v "$RAIZ:/src" -w /src/api \
     -e POSTGRES_HOST=db \
     -e POSTGRES_USER="$POSTGRES_USER" \
     -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
@@ -112,7 +172,7 @@ test_arquivos() {
 
   local rede args
   rede="$(docker network ls --format '{{.Name}}' | grep -E 'pokelab.*default' | head -1)"
-  args=(--rm -v "$RAIZ:/src" -w /src/api)
+  args=(-v "$RAIZ:/src" -w /src/api)
 
   if [ -n "$rede" ] && [ -f "$RAIZ/.env" ]; then
     # shellcheck disable=SC1091
@@ -125,7 +185,7 @@ test_arquivos() {
 
   info "test: $alvos"
   # shellcheck disable=SC2086
-  docker run "${args[@]}" "$(imagem_de_teste)" pytest -q $alvos
+  rodar_container "${args[@]}" "$(imagem_de_teste)" pytest -q $alvos
 }
 
 build() {
@@ -133,7 +193,10 @@ build() {
   cd "$RAIZ" && docker compose build
 }
 
+limpar_orfaos
+
 case "$ETAPA" in
+  limpar) info "limpeza concluida"; exit 0 ;;
   lint)  lint ;;
   test)  test_suite ;;
   test-db) test_db ;;
