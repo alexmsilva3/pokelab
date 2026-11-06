@@ -166,6 +166,9 @@ A lista so e regerada a cada INTERVALO_REGERAR_ENTREGAS_MINUTOS. O intervalo exi
 14. Pokemon comprometido com entrega nao entra em time, expedicao nem outra entrega.
 15. Lista de entregas so e regerada apos o intervalo de espera.
 16. Destino de entrega e sempre uma CIDADE ja desbloqueada.
+17. Expedicao exige treinador com ao menos um Pokemon no time.
+
+O invariante 17 nao e simetrico: treinador sem Pokemon e estado valido (e como os tres nascem), mas nao pode ser DESPACHADO em expedicao — sem time nao ha o que ganhar experiencia nem vencer encontro, e a expedicao voltaria em falha garantida tendo consumido tempo e itens. A regra vale so para expedicao: na entrega o treinador e mensageiro e carrega os Pokemon pedidos, que saem do laboratorio, entao time proprio nao faz diferenca.
 
 Validados em `game/` com excecao propria e mensagem em portugues (Artigo VI). A constraint de banco e a segunda linha de defesa.
 

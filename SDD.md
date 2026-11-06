@@ -174,8 +174,13 @@ O nível do laboratório não é decorativo: ele define `limite_treinadores`, e 
 14. Um Pokémon comprometido com uma entrega não pode entrar em time, em expedição nem em outra entrega.
 15. A lista de entregas só é regerada após `INTERVALO_REGERAR_ENTREGAS` desde o último sorteio.
 16. O destino de uma entrega é sempre um local do tipo `CIDADE` já desbloqueado.
+17. Uma expedição exige um treinador com **ao menos um Pokémon no time**.
 
 Não existe mais limite fixo de expedições simultâneas: o gargalo é o número de treinadores disponíveis, e portanto o nível do laboratório.
+
+O invariante 17 merece nota porque não é simétrico. Um treinador sem Pokémon é estado perfeitamente válido — é como os três começam, e é o que permite ao professor redistribuir times à vontade. O que não pode é **despachar** esse treinador: sem time não há o que ganhar experiência, não há o que vencer um encontro, e a expedição voltaria em falha garantida depois de consumir tempo e itens.
+
+A regra vale para expedição e **não** para entrega. Na entrega o treinador é mensageiro: carrega os Pokémon pedidos, que saem do laboratório, não do time dele. Não há encontro no caminho (seção 4.9), então time próprio não faz diferença. Um laboratório que acabou de nascer, com três treinadores vazios, consegue cumprir uma entrega — e isso é deliberado: é um caminho de progressão para quem ainda não montou nenhum time.
 
 ---
 
@@ -609,13 +614,13 @@ O laboratório nasce com **três treinadores e três iniciais**, para que distri
 |---|---|---|---|
 | 6.1 | Modelos `Expedicao`, `ExpedicaoItem`, `ExpedicaoEvento` | `pokelab-api` | — |
 | 6.2 | `game/expedition.py`: cálculo de duração (4.4), dificuldade e poder do time (4.3) | `pokelab-domain` | `pokelab-domain-rules` |
-| 6.3 | `POST /expeditions`: valida invariantes 3, 6 e 9, debita carga, grava `seed`, `started_at` e `eta`. O limite de expedições simultâneas é o número de treinadores disponíveis, não uma constante | `pokelab-api` | `pokelab-api-conventions` |
+| 6.3 | `POST /expeditions`: valida invariantes 3, 6, 9 e **17** (treinador com ao menos um Pokémon), debita carga, grava `seed`, `started_at` e `eta`. O limite de expedições simultâneas é o número de treinadores disponíveis, não uma constante | `pokelab-api` | `pokelab-api-conventions` |
 | 6.4 | `GET /expeditions` com tempo restante calculado no servidor | `pokelab-api` | — |
 | 6.5 | `DELETE /expeditions/{id}`: aborto sem recompensa, itens não devolvidos | `pokelab-api` | — |
 | 6.6 | `EXPEDITION_TIME_SCALE` via configuração (ADR-004) | `pokelab-infra` | — |
-| 6.7 | Tela de despacho: escolher treinador, destino, carga; prévia de duração, dificuldade e chance estimada | `pokelab-frontend` | `pokelab-ui-kit` |
+| 6.7 | Tela de despacho: escolher treinador, destino, carga; prévia de duração, dificuldade e chance estimada. Treinador de time vazio aparece indisponível, com o motivo e um atalho para montar o time | `pokelab-frontend` | `pokelab-ui-kit` |
 | 6.8 | Painel de expedições ativas com contador regressivo e polling leve | `pokelab-frontend` | `pokelab-ui-kit` |
-| 6.9 | Testes: expedição sem treinador livre rejeitada; treinador ocupado rejeitado; estoque debitado corretamente; três treinadores rendem três expedições simultâneas | `pokelab-test` | — |
+| 6.9 | Testes: expedição sem treinador livre rejeitada; **treinador de time vazio rejeitado**; treinador ocupado rejeitado; estoque debitado corretamente; três treinadores rendem três expedições simultâneas | `pokelab-test` | — |
 
 **Pronto quando:** três expedições correm simultaneamente — uma por treinador —, com contador regressivo correto após recarregar a página, e a quarta é recusada por falta de treinador.
 
