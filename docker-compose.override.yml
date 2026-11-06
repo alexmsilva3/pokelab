@@ -1,11 +1,26 @@
 # Sobreposicao de desenvolvimento, aplicada automaticamente pelo docker compose.
 #
-# Monta o codigo-fonte dentro dos containers para que a API recarregue sozinha e
-# para que migracoes geradas por `make revision` aparecam no host. Em producao
-# este arquivo nao existe e vale apenas o docker-compose.yml.
+# Monta o codigo-fonte dentro dos containers para que a API e a interface
+# recarreguem sozinhas, e para que migracoes geradas por `make revision`
+# aparecam no host. Em producao este arquivo nao existe e vale apenas o
+# docker-compose.yml, onde a interface e build estatico servido por nginx.
+#
+# O web ficou de fora disto ate a Fase 4 e o resultado foi a interface
+# congelada no bundle da Fase 0 por dois dias, enquanto a API refletia cada
+# mudanca. Assimetria de ambiente nao se documenta: se conserta.
 services:
   api:
     volumes:
       - ./api:/app
       - ./data:/data:ro
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  web:
+    build:
+      target: dev
+    volumes:
+      - ./web:/app
+      # Volume anonimo: preserva o node_modules instalado no build, que a
+      # montagem de ./web sobrescreveria. Mudou package.json, rode `make up`
+      # com --build.
+      - /app/node_modules

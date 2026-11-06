@@ -1,3 +1,16 @@
+# Estagio de desenvolvimento: servidor do Vite com recarga automatica.
+#
+# Escuta na porta 80 de proposito, para reaproveitar o mapeamento que o
+# docker-compose.yml ja declara (WEB_PORT:80) sem que o override precise
+# redeclarar portas — portas em override sao somadas, nao substituidas, e
+# redeclarar causaria conflito de bind.
+FROM node:24-alpine AS dev
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+EXPOSE 80
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "80"]
+
 FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
