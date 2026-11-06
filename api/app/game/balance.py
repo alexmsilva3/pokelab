@@ -18,7 +18,10 @@ LOCAL_INICIAL_ID: Final[str] = "pallet-town"
 
 # Dois numeros distintos que ja foram confundidos por terem nome parecido:
 # quantos treinadores o kit CONCEDE, e quantos o laboratorio COMPORTA.
-TREINADORES_NO_KIT_INICIAL: Final[int] = 1
+# Tres treinadores para tres iniciais: o professor distribui como quiser desde
+# o primeiro minuto, e a escolha de quem leva quem ja e decisao de jogo. Na v1
+# nao ha recrutamento, entao este numero tambem e o total que existira.
+TREINADORES_NO_KIT_INICIAL: Final[int] = 3
 ESTOQUE_INICIAL: Final[dict[str, int]] = {
     "poke-ball": 10,
     "potion": 5,

@@ -73,4 +73,4 @@ Dados de seed sao **imutaveis em runtime**. Nenhum endpoint escreve em `PokemonE
 
 ## Se a fonte nao tem o dado
 
-Nao invente. Registre a lacuna na secao 10 do SDD e pergunte ao professor.
+Nao invente. Registre a lacuna na secao 11 do SDD e pergunte ao professor.

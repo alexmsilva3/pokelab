@@ -168,6 +168,14 @@ def test_kit_e_concedido_uma_unica_vez_por_laboratorio(sessao_db):
     depois = _contagens(sessao_db, laboratorio_id)
 
     assert (
-        antes == depois == {"pokemon": 3, "treinadores": 1, "itens": 3, "locais": 1, "pokedex": 3}
+        antes
+        == depois
+        == {
+            "pokemon": len(balance.STARTER_SPECIES_IDS),
+            "treinadores": balance.TREINADORES_NO_KIT_INICIAL,
+            "itens": len(balance.ESTOQUE_INICIAL),
+            "locais": 1,
+            "pokedex": len(balance.STARTER_SPECIES_IDS),
+        }
     )
     assert sessao_db.get(Laboratorio, laboratorio_id).starters_concedidos is True

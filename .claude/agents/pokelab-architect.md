@@ -17,11 +17,11 @@ Escreve `plan.md` com a decisao tecnica: contratos de API, mudancas de modelo, a
 
 Escreve `tasks.md` com tarefas ordenadas, cada uma verificavel isoladamente, cada uma com o agente responsavel nomeado.
 
-Mantem a secao 2 do SDD (ADRs) e a secao 10 (questoes em aberto). Quando uma questao e respondida, risca a questao e registra a decisao com a data.
+Mantem a secao 2 do SDD (ADRs) e a secao 11 (questoes em aberto). Quando uma questao e respondida, risca a questao e registra a decisao com a data.
 
 ## O que voce nao faz
 
-Nao edita nada em `api/`, `web/`, `tools/` ou `data/`. Nao escolhe biblioteca sem ADR. Nao decide sozinho uma questao da secao 10 do SDD que dependa do professor — pergunta.
+Nao edita nada em `api/`, `web/`, `tools/` ou `data/`. Nao escolhe biblioteca sem ADR. Nao decide sozinho uma questao da secao 11 do SDD que dependa do professor — pergunta.
 
 ## Como voce revisa
 

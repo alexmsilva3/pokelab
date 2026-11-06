@@ -6,6 +6,7 @@ import json
 
 from fastapi.testclient import TestClient
 
+from app.game import balance
 from app.main import app
 from tests.conftest import requer_banco
 
@@ -60,18 +61,18 @@ def test_login_senha_errada_e_usuario_inexistente_devolvem_401_identico(sessao_d
     assert senha_errada.json() == usuario_inexistente.json()
 
 
-def test_me_com_token_devolve_tres_pokemon_e_um_treinador(sessao_db):
+def test_me_com_token_devolve_o_kit_inicial_completo(sessao_db):
     registro = client.post("/auth/register", json={"usuario": "May", "senha": "torchic123456"})
     token = registro.json()["token"]
 
     resposta = client.get("/me", headers={"Authorization": f"Bearer {token}"})
     assert resposta.status_code == 200
     resumo = resposta.json()["resumo"]
-    assert resumo["pokemon"] == 3
-    assert resumo["treinadores"] == 1
+    assert resumo["pokemon"] == len(balance.STARTER_SPECIES_IDS)
+    assert resumo["treinadores"] == balance.TREINADORES_NO_KIT_INICIAL
     assert resumo["locais_desbloqueados"] == 1
-    assert resumo["especies_vistas"] == 3
-    assert resumo["especies_capturadas"] == 3
+    assert resumo["especies_vistas"] == len(balance.STARTER_SPECIES_IDS)
+    assert resumo["especies_capturadas"] == len(balance.STARTER_SPECIES_IDS)
 
 
 def test_me_sem_token_devolve_401(sessao_db):

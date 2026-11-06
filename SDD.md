@@ -566,20 +566,23 @@ Spec em [specs/003-o-laboratorio/](specs/003-o-laboratorio/). 815 testes de back
 ---
 
 ### Fase 4 — Corpo de Treinadores
-*NPCs e montagem de times.*
+*Os três NPCs do laboratório e a montagem de times.*
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
-| 4.1 | Modelo `Treinador`, migração, gerador de nome e avatar (ver questão 16) | `pokelab-domain` | `pokelab-domain-rules` |
-| 4.2 | `POST /trainers` — recrutamento, respeitando `limite_treinadores` do laboratório (invariante 5) | `pokelab-api` | — |
-| 4.3 | `PUT /trainers/{id}/team` com validação dos invariantes 1–4 da seção 3.3 | `pokelab-domain` + `pokelab-api` | `pokelab-domain-rules` |
-| 4.4 | Nível e EXP do treinador: curva quadrática e ganho de um terço por batalha (contrato definido aqui, aplicado na Fase 7) | `pokelab-domain` | `pokelab-domain-rules` |
-| 4.5 | Nível e EXP do laboratório, e `limite_treinadores` derivado dele | `pokelab-domain` + `pokelab-api` | `pokelab-domain-rules` |
-| 4.6 | Tela Treinadores: lista com status, cartão por treinador, capacidade de bagagem visível | `pokelab-frontend` | `pokelab-ui-kit` |
-| 4.7 | Montagem de time por seleção em lista (sem drag-and-drop), com prévia de poder do time e de quantas capturas a bagagem comporta | `pokelab-frontend` | `pokelab-ui-kit` |
-| 4.8 | Testes dos invariantes: 4º Pokémon no time rejeitado, Pokémon em dois times rejeitado, time travado em expedição, 4º treinador rejeitado no laboratório nível 1 | `pokelab-test` | — |
+O laboratório nasce com **três treinadores e três iniciais**, para que distribuir quem leva quem seja decisão do professor desde o primeiro minuto. **Não há recrutamento na v1**: o corpo de treinadores é fixo, e `limite_treinadores` existe no domínio e na API para quando houver (questão 3).
 
-**Pronto quando:** é possível recrutar até três treinadores, montar um time de 3, ver o poder resultante e a capacidade de bagagem que sobra.
+| # | Tarefa | Agente | Skills |
+|---|---|---|---|
+| 4.1 | `GET /trainers` e `GET /trainers/{id}`: lista com status e ficha com time, nível e capacidade de bagagem | `pokelab-api` | `pokelab-api-conventions` |
+| 4.2 | `PUT /trainers/{id}/team` com validação dos invariantes 1 a 4 e 11 da seção 3.3 | `pokelab-domain` + `pokelab-api` | `pokelab-domain-rules` |
+| 4.3 | `game/trainers.py`: nível e EXP do treinador — curva quadrática e ganho de um terço por batalha (contrato definido aqui, aplicado na Fase 7) | `pokelab-domain` | `pokelab-domain-rules` |
+| 4.4 | `game/power.py`: poder do Pokémon e do time (seção 4.3), para a prévia da montagem | `pokelab-domain` | `pokelab-domain-rules` |
+| 4.5 | Tela Treinadores: lista com status, cartão por treinador, capacidade de bagagem visível | `pokelab-frontend` | `pokelab-ui-kit` |
+| 4.6 | Montagem de time por seleção em lista (sem drag-and-drop), com prévia de poder e de quantas capturas a bagagem comporta | `pokelab-frontend` | `pokelab-ui-kit` |
+| 4.7 | Testes dos invariantes: 4º Pokémon no time rejeitado, Pokémon em dois times rejeitado, time travado em expedição | `pokelab-test` | — |
+
+**Pronto quando:** o professor distribui os três iniciais entre os três treinadores, vê o poder de cada time e quantas capturas a bagagem de cada um comporta.
 
 ---
 
@@ -794,7 +797,43 @@ A spec é atualizada quando a realidade diverge dela. Código que contraria a sp
 
 ---
 
-## 10. Questões em aberto
+## 10. Backlog pós-v1
+
+Ideias decididas e adiadas. Não são questões em aberto — o **o quê** está resolvido, só o **quando** não é agora. Cada item aqui vira uma spec própria quando chegar a vez.
+
+### 10.1 Gerador de treinadores por spawn
+
+Treinadores deixam de ser um elenco fixo e passam a **aparecer em locais já descobertos**. O professor encontra gente disponível onde seus treinadores já estiveram, e contrata quem quiser.
+
+O local de spawn determina o treinador: **nível e atributos saem da dificuldade do lugar**. Um treinador que aparece em Pallet Town é iniciante; um que aparece em Mt. Moon chega experiente — e provavelmente mais caro.
+
+Isso resolve três coisas de uma vez que hoje estão soltas. Dá propósito a visitar de novo um local já desbloqueado, que na v1 só serve para repetir encontros. Faz o mapa alimentar a progressão do laboratório, não só a Pokédex. E transforma `limite_treinadores`, que na v1 é um número sem pressão, num teto que o professor sente.
+
+Depende de: recrutamento existir (10.2) e da moeda ter uso (10.3). Encosta no `PokedexAvistamento` da Fase 7, que já registra onde cada treinador esteve.
+
+Decidir quando chegar a vez: o treinador disponível expira? Quantos aparecem por local? O professor vê os atributos antes de contratar, ou só a faixa? Dá para recusar e esperar outro?
+
+### 10.2 Recrutamento de treinadores
+
+A entrada de treinadores no laboratório, hoje inexistente (questão 3). Junto com ela voltam a demissão e a possibilidade de perder um treinador (questão 4), que só fazem sentido quando há como repor.
+
+O invariante 5 e `limite_treinadores` já existem no domínio e na API desde a Fase 2 justamente para que esta adição não mexa no modelo.
+
+### 10.3 Loja
+
+A moeda já é paga pelas entregas (Fase 8) e não compra nada na v1. Vai comprar Poções e Pokébolas para mandar com o treinador, e treinadores novos. Preços saem dos dados de calibragem da Fase 9 — definir preço antes de conhecer a renda seria chutar duas vezes. Levantamento na tarefa 10.8.
+
+### 10.4 Evolução fora do nível
+
+As 100 espécies que não evoluem por nível: pedra, troca e amizade. Levantamento na tarefa 10.7 (questão 17).
+
+### 10.5 Mapa de distribuição de espécies
+
+`PokedexAvistamento` acumula desde a Fase 7 onde cada espécie foi vista. Falta exibir — camada no mapa, janela própria, ou filtro na escolha do destino (questão 23).
+
+---
+
+## 11. Questões em aberto
 
 Pontos que não bloqueiam o início, mas precisam de decisão antes das fases indicadas.
 
@@ -803,9 +842,9 @@ Pontos que não bloqueiam o início, mas precisam de decisão antes das fases in
 2. ~~Laboratórios por conta.~~ **Resolvido 2026-11-05: um por conta na v1.** Quando outras regiões entrarem, cada uma ganha seu laboratório. O modelo já suporta: `Laboratorio` tem `professor_id`, então a relação é 1:N desde o início e passar de um para vários não exige migração — apenas remover a validação de unicidade.
 
 **Antes da Fase 4**
-3. Como se recruta um treinador dentro do `limite_treinadores`? **Pendente de você.** O limite já está decidido (3 no nível 1, mais um por nível) e a direção também: a questão 19 fechou que treinadores serão comprados com moeda. Falta o que vale na v1, enquanto a loja não existe — recrutar de graça até o limite é o caminho mais provável, já que o limite por si só é a restrição.
-4. Treinador pode ser perdido ou demitido? Há consequência numa falha grave? Com o limite agora atrelado ao nível do laboratório, demitir para trocar passa a ser uma jogada válida — e perder um treinador, uma perda séria.
-5. Nome e avatar dos treinadores: gerados aleatoriamente de uma lista, ou nomeados pelo professor?
+3. ~~Como se recruta um treinador.~~ **Resolvido 2026-11-06: não se recruta na v1.** O laboratório nasce com três treinadores e três iniciais, e o corpo é fixo. `limite_treinadores` continua existindo no domínio e na API, derivado do nível, para que a v2 só precise acrescentar o caminho de entrada — e não mexer no invariante 5 nem no modelo. O recrutamento vira o item 10.2 do backlog pós-v1.
+4. ~~Treinador pode ser perdido ou demitido?~~ **Resolvido 2026-11-06: não na v1.** Sem recrutamento, perder um treinador seria dano permanente e irreparável. Volta junto com o recrutamento.
+5. ~~Nome e avatar dos treinadores.~~ **Resolvido 2026-11-05: gerados.** Nome sorteado de uma lista e avatar derivado deterministicamente, implementados em `game/trainers.py` na Fase 2.
 
 **Antes da Fase 5**
 6. ~~Recorte do mapa.~~ **Resolvido 2026-11-05: 10 locais, Pallet até Cerulean (Fase 1).**

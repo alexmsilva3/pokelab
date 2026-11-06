@@ -25,6 +25,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.erros import ErroDeAplicacao, RecursoNaoEncontrado
 from app.core.seguranca import ALGORITMO_TOKEN
+from app.game import balance
 from app.main import app, tratar_erro_de_aplicacao
 from app.models import PokemonInstancia, Professor
 from app.repositories import professores as professores_repo
@@ -41,7 +42,7 @@ client = TestClient(app)
 def test_registro_com_usuario_livre_cria_conta_laboratorio_e_kit_completo(sessao_db):
     """Dado nenhum cadastro, quando o professor se registra com um usuario
     livre, entao existem uma conta, um laboratorio nivel 1 com zero moedas,
-    tres Pokemon nivel 5, um treinador nivel 1, o estoque inicial e Pallet
+    tres Pokemon nivel 5, os treinadores iniciais nivel 1, o estoque e Pallet
     Town desbloqueada."""
     resposta = client.post("/auth/register", json={"usuario": "Ivysaur", "senha": "bulbassauro1"})
 
@@ -54,7 +55,7 @@ def test_registro_com_usuario_livre_cria_conta_laboratorio_e_kit_completo(sessao
     perfil = client.get("/me", headers={"Authorization": f"Bearer {corpo['token']}"})
     resumo = perfil.json()["resumo"]
     assert resumo["pokemon"] == 3
-    assert resumo["treinadores"] == 1
+    assert resumo["treinadores"] == balance.TREINADORES_NO_KIT_INICIAL
     assert resumo["locais_desbloqueados"] == 1
     assert resumo["especies_capturadas"] == 3
 
