@@ -97,6 +97,18 @@ Cada expedição recebe um `seed` inteiro no momento do envio. Toda rolagem usa 
 
 ---
 
+### ADR-006 — O relatório é reclamado, não derivado numa leitura
+
+A resolução de uma expedição vencida acontece em `POST /expeditions/{id}/claim`, dentro de uma transação com `SELECT ... FOR UPDATE` e checagem de status. Os `GET` continuam sendo leituras puras.
+
+**Motivo:** um `GET` que escreve torna a listagem ambígua — dez expedições vencidas resolveriam dez vezes numa requisição — impede cache e réplica de leitura, e confunde repetição com retentativa de timeout. Além disso, receber o relatório é um momento do jogo e merece verbo próprio: é onde a interface pendura a linha do tempo. O ADR-004 segue valendo; continua não havendo job nem agendador, e a resolução continua sob demanda.
+
+**Preço:** o treinador fica ocupado até o professor voltar para buscar o relatório. É o modelo de frota, e é pressão de design deliberada.
+
+Revê a tarefa 7.7, que pedia resolução dentro do `GET /expeditions/{id}`.
+
+---
+
 ## 3. Modelo de domínio
 
 ```
@@ -177,6 +189,8 @@ O nível do laboratório não é decorativo: ele define `limite_treinadores`, e 
 15. A lista de entregas só é regerada após `INTERVALO_REGERAR_ENTREGAS` desde o último sorteio.
 16. O destino de uma entrega é sempre um local do tipo `CIDADE` já desbloqueado.
 17. Uma expedição exige um treinador com **ao menos um Pokémon no time**.
+18. Um Pokémon em expedição não recupera HP; a recuperação passiva só corre no laboratório.
+19. O resultado de uma expedição é função apenas da semente e do estado gravado no envio.
 
 Não existe mais limite fixo de expedições simultâneas: o gargalo é o número de treinadores disponíveis, e portanto o nível do laboratório.
 
@@ -346,7 +360,17 @@ Uma expedição `CONCLUIDA_SUCESSO` grava `LocalDesbloqueado` para o destino. A 
 
 ### 4.8 Pós-expedição
 
-O treinador entra em `DESCANSANDO` por um período proporcional ao desgaste e depois volta a `DISPONIVEL`. Pokémon retornam com o `hp_atual_pct` reduzido, recuperado passivamente ao longo do tempo enquanto estiverem no laboratório.
+Na v1 o treinador volta direto a `DISPONIVEL` ao fim da resolução. O estado `DESCANSANDO` existe no modelo e não bloqueia missão; um descanso com prazo fica para depois.
+
+**Recuperação passiva.** Pokémon retornam com o `hp_atual_pct` reduzido e se recuperam sozinhos enquanto estiverem no laboratório, derivado do relógio como manda o ADR-004:
+
+```
+hp_recuperado = min(100, hp_atual_pct + (minutos_desde_atualizado_em // MINUTOS_POR_PONTO_DE_HP))
+```
+
+A coluna `hp_atualizado_em` marca desde quando conta. O despacho **materializa** o valor recuperado e carimba `started_at`: em campo a enfermaria não trabalha. A resolução grava o HP desgastado e carimba `resolvida_em`, e a recuperação recomeça. Toda leitura deriva.
+
+Sem isso o loop trava: o desgaste é de 3 a 8 pontos por vitória e de 15 a 30 por derrota, o poder do time multiplica por `hp_atual_pct / 100`, e em quatro expedições o time não vence mais nada.
 
 **Descarga da Pokédex.** Ao retornar, o treinador despeja no laboratório tudo que registrou em campo. Cada espécie enfrentada ou capturada vira ou atualiza um `PokedexAvistamento` ligando espécie e local. É assim que o laboratório aprende **onde** cada Pokémon vive — conhecimento que a v1 acumula e uma versão futura exibe no mapa (questão 23).
 
@@ -638,28 +662,36 @@ Spec em [specs/006-despacho-de-expedicoes/](specs/006-despacho-de-expedicoes/). 
 ### Fase 7 — Relatório de Campo
 *O motor. Resolução de encontros, EXP, captura, evolução e retorno.*
 
-Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqui toca I/O além da camada de serviço.
+Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqui toca I/O além da camada de serviço. Spec em [specs/007-relatorio-de-campo/](specs/007-relatorio-de-campo/); o ADR-006 revê a 7.7 original, que pedia resolução dentro do `GET`.
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
-| 7.1 | `game/experience.py`: ganho de EXP e curvas de crescimento (4.1), com testes de tabela | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.2 | `game/power.py`: poder do Pokémon, do time e dificuldade (4.3) | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.1 | `game/experience.py`: aplicar ganho, subir nível com teto 100 e descartar excedente (4.1) | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.2 | `game/evolucao.py`: cadeia de evolução por nível, com teto de iterações | `pokelab-domain` | `pokelab-domain-rules` |
 | 7.3 | `game/capture.py`: probabilidade e slots de captura (4.6) | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.4 | `game/encounter.py`: interface `EncounterResolver` e implementação probabilística (ADR-003) | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.5 | `game/expedition.py::resolve()`: loop de encontros, consumo de itens, desgaste, falha por 3 derrotas, geração ordenada de eventos | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.6 | Textos narrativos dos eventos em português, por tipo, com interpolação de nomes e números | `pokelab-domain` | `pokelab-ui-kit` |
-| 7.7 | Resolução preguiçosa idempotente no `GET /expeditions/{id}`: transação com `SELECT ... FOR UPDATE` e checagem de status | `pokelab-api` | `pokelab-api-conventions` |
-| 7.8 | Capacidade de bagagem: a captura para em `6 - tamanho_do_time`, e a Pokédex continua registrando | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.9 | EXP do treinador (um terço por batalha) e do laboratório (por expedição bem-sucedida), com subida de nível | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.10 | Descarga da Pokédex: `PokedexAvistamento` por espécie e local ao fim da expedição | `pokelab-domain` + `pokelab-api` | `pokelab-domain-rules` |
-| 7.11 | `POST /expeditions/{id}/claim`: cria Pokémon capturados, aplica EXP de Pokémon, treinador e laboratório, resolve evoluções, grava avistamentos, desbloqueia o local, libera o treinador | `pokelab-api` | `pokelab-domain-rules` |
-| 7.12 | **Recompensa de itens**: evento `ITEM` na resolução, repondo Pokébolas e curas conforme a dificuldade do local | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.13 | Tela de relatório de campo: timeline de eventos, resumo de capturas, EXP ganha pelos três níveis e itens consumidos | `pokelab-frontend` | `pokelab-ui-kit` |
-| 7.14 | Testes determinísticos por seed: mesma entrada produz exatamente o mesmo relatório | `pokelab-test` | — |
-| 7.15 | Testes de idempotência: duas chamadas concorrentes resolvem uma única vez | `pokelab-test` | — |
-| 7.16 | Teste de bagagem cheia: treinador com time de 3 captura no máximo 3 e segue registrando avistamentos | `pokelab-test` | — |
+| 7.4 | `game/encounter.py`: sorteio ponderado de espécie e nível, interface do resolvedor (ADR-003) | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.5 | `game/cura.py`: escolha e efeito do item de cura, reinício da contagem de derrotas | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.6 | `game/achados.py`: tabela ponderada de itens e quantidade por dificuldade | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.7 | `game/expedition.py::resolver`: laço de encontros na **ordem de sorteio fixada**, eventos ordenados, falha por 3 derrotas | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.8 | Textos narrativos dos eventos em português, por tipo, com interpolação de nomes e números | `pokelab-domain` | `pokelab-ui-kit` |
+| 7.9 | `game/stats.py::hp_recuperado`: recuperação passiva derivada do relógio (4.8) | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.10 | Constantes novas em `balance.py` com nome, unidade e motivo | `pokelab-domain` | `pokelab-domain-rules` |
+| 7.11 | Coluna `hp_atualizado_em` e migração com `downgrade` | `pokelab-api` | `pokelab-api-conventions` |
+| 7.12 | Materialização do HP recuperado no despacho | `pokelab-api` | `pokelab-api-conventions` |
+| 7.13 | `POST /expeditions/{id}/claim`: transação com `SELECT ... FOR UPDATE`, checagem de status, idempotência (ADR-006) | `pokelab-api` | `pokelab-api-conventions` |
+| 7.14 | Escrita do resultado: capturas, HP do time, Pokédex, avistamentos, desbloqueio, estoque, treinador livre | `pokelab-api` | `pokelab-domain-rules` |
+| 7.15 | EXP de treinador e de laboratório com subida de nível | `pokelab-api` | `pokelab-domain-rules` |
+| 7.16 | Relatório no `GET /expeditions/{id}` e schemas do relatório | `pokelab-api` | `pokelab-api-conventions` |
+| 7.17 | HP derivado nas leituras de Pokémon e de treinador | `pokelab-api` | `pokelab-api-conventions` |
+| 7.18 | Tela de relatório de campo: linha do tempo, capturas, as três experiências e itens consumidos | `pokelab-frontend` | `pokelab-ui-kit` |
+| 7.19 | Botão de receber relatório no painel de expedições | `pokelab-frontend` | `pokelab-ui-kit` |
+| 7.20 | Testes de determinismo por semente e de **ordem dos sorteios** | `pokelab-test` | — |
+| 7.21 | Testes de idempotência: duas chamadas concorrentes resolvem uma única vez | `pokelab-test` | — |
+| 7.22 | Testes de bagagem cheia, carga sem bola e falha por três derrotas | `pokelab-test` | — |
+| 7.23 | Testes de Pokédex, avistamento e desbloqueio | `pokelab-test` | — |
+| 7.24 | Testes de frontend do relatório | `pokelab-test` | — |
 
-**Pronto quando:** uma expedição enviada retorna com relatório coerente, os Pokémon ganham nível, o treinador e o laboratório também, pelo menos um Pokémon é capturado, os avistamentos entram na Pokédex e o local é desbloqueado.
+**Pronto quando:** uma expedição enviada retorna com relatório coerente, os Pokémon ganham nível, o treinador e o laboratório também, pelo menos um Pokémon é capturado, os avistamentos entram na Pokédex, o local é desbloqueado e o time machucado se recupera sozinho com o tempo.
 
 ---
 
@@ -864,11 +896,11 @@ Pontos que não bloqueiam o início, mas precisam de decisão antes das fases in
 6. ~~Recorte do mapa.~~ **Resolvido 2026-11-05: 10 locais, Pallet até Cerulean (Fase 1).**
 7. Alguma expedição precisa de pré-requisito além de adjacência (por exemplo, nível mínimo do treinador)?
 
-**Antes da Fase 7**
-8. Pokémon pode ser derrotado permanentemente, ou só fica machucado? (Assumi: só machucado, `hp_atual_pct` baixo.)
-9. Pokémon capturado vem com o nível que tinha em campo, ou normalizado?
-10. Pokémon atribuído a um treinador evolui durante a expedição, ou só no laboratório?
-11. Há limite de capacidade do laboratório **para Pokémon**? O limite de treinadores já existe; o de Pokémon guardados, não. Armazenamento infinito na v1, ou um "PC do Bill"? Note que as entregas passaram a ser um dreno natural de Pokémon excedentes, o que torna o limite menos urgente.
+**Antes da Fase 7** — resolvidas na spec 007.
+8. ~~Pokémon pode ser derrotado permanentemente?~~ **Só machucado.** `hp_atual_pct` chega a zero, o Pokémon fica nocauteado e se recupera passivamente no laboratório (4.8). Morte permanente num jogo de administração puniria o professor por uma rolagem que ele não vê.
+9. ~~Pokémon capturado vem com o nível de campo ou normalizado?~~ **O nível de campo.** Normalizar apagaria a única razão de mandar treinador para longe.
+10. ~~Evolui durante a expedição ou só no laboratório?~~ **Durante a expedição**, na resolução. O evento `EVOLUCAO` está no relatório desde o modelo de domínio; evoluir depois esvaziaria o relatório.
+11. ~~Há limite de armazenamento de Pokémon?~~ **Ilimitado na v1.** As entregas (Fase 8) são o dreno natural, e um "PC do Bill" entra se a calibragem da Fase 9 mostrar acúmulo que não escoa.
 
 **Antes da Fase 8**
 19. ~~Para que serve a moeda?~~ **Resolvido 2026-11-05: loja pós-v1.** A moeda vai comprar Poções e Pokébolas para mandar com o treinador, e novos treinadores. Na v1 ela apenas acumula — o professor vê o saldo crescer e a loja chega depois. Decisão deliberada: a economia de entrada (quanto cada entrega paga) pode ser calibrada na Fase 9 com dados reais antes de existir qualquer economia de saída, o que é a ordem certa.
