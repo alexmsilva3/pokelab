@@ -21,7 +21,13 @@ Puro, com dataclass de entrada enxuta. A Fase 7 depois só acrescenta a dificuld
 
 `game/team.py` — validação dos invariantes 1 a 6 e 11 e o cálculo de capacidade de bagagem. Recebe a composição pretendida e o estado dos envolvidos, devolve o time validado ou levanta erro de domínio. Nenhuma consulta ao banco: quem busca é o serviço.
 
-`game/trainers.py` já tem nome e avatar da Fase 2. Ganha a curva de nível do treinador (`EXP_TREINADOR_BASE * n^2`) e o ganho de um terço por batalha, cujo contrato é definido aqui e consumido na Fase 7.
+`game/trainers.py` já tem nome e avatar da Fase 2. Ganha a curva de nível do treinador e o ganho de um terço por batalha, cujo contrato é definido aqui e consumido na Fase 7.
+
+```
+exp_total_para_nivel(n) = EXP_TREINADOR_BASE * (n - 1)^2
+```
+
+O deslocamento de um nível existe para que o nível 1 custe zero — mesma forma que `game/laboratorio.py` e as curvas de Pokémon já usam. Sem ele, um treinador recém-contratado nasceria devendo experiência.
 
 ## Contratos de API
 
@@ -37,7 +43,13 @@ PUT /trainers/{id}/team   {pokemon_ids: [uuid]}
     200 -> TrainerDetalhe
     404 -> inexistente ou de outro laboratorio
     409 -> TIME_CHEIO | POKEMON_JA_ATRIBUIDO | TREINADOR_OCUPADO |
-           POKEMON_COMPROMETIDO | POKEMON_DUPLICADO
+           POKEMON_COMPROMETIDO | POKEMON_DUPLICADO | POKEMON_DESCONHECIDO
+
+`POKEMON_DESCONHECIDO` cobre id inexistente e id de outro laboratório. Vem como
+409 e não 404 de propósito: quem não existe é um item da lista, não o recurso
+pedido, e o treinador continua lá. É também por onde a regra de escopo chega ao
+domínio sem que ele consulte o banco — o serviço só lhe entrega o que pertence
+ao laboratório da sessão, e o resto é desconhecido por construção.
 
 POST /trainers/{id}/team/preview   {pokemon_ids: [uuid]}
     200 -> {poder, capacidade_bagagem, valido, motivo?}

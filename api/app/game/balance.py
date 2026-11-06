@@ -81,6 +81,13 @@ BASE_PERCENTUAL: Final[int] = 100
 # --- Poder e dificuldade (SDD 4.3) -----------------------------------------
 
 SOMA_STATS_BASE_REFERENCIA: Final[int] = 600  # normalizador do bonus de stats
+
+# O poder sai com uma casa decimal, nao inteiro. Com time pequeno e nivel baixo
+# o passo de 3% por nivel de treinador cabe inteiro dentro do arredondamento:
+# um Bulbasaur nivel 5 com treinador de nivel 1, 2 ou 3 dava 8 nos tres casos,
+# tornando falso o criterio de aceite 9 da spec 004. Casa decimal preserva a
+# diferenca sem mexer na razao poder/dificuldade de que a Fase 7 depende.
+CASAS_DECIMAIS_PODER: Final[int] = 1
 BONUS_POR_NIVEL_TREINADOR: Final[float] = 0.03  # +3% de poder por nivel
 FATOR_DIFICULDADE: Final[float] = 1.0  # escala global, alvo da Fase 8
 

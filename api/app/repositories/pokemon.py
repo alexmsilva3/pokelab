@@ -32,12 +32,20 @@ class FiltrosPokemon:
 
     `atribuido` e booleano de tres estados: `None` nao filtra, `True` traz so
     quem tem treinador, `False` so quem esta livre no laboratorio.
+
+    `livre` e um conceito mais largo que `atribuido=False` (spec 004, secao 7
+    do plano): hoje "livre" significa so "sem treinador", porque a Fase 8 ainda
+    nao existe, mas o nome ja e o definitivo — "sem treinador E sem entrega".
+    Quando `comprometido_entrega_id` for criado, a condicao de `livre` ganha
+    mais uma clausula aqui, e `atribuido` continua como esta: os dois filtros
+    respondem perguntas diferentes e nao devem ser fundidos num so.
     """
 
     tipo: str | None = None
     nivel_min: int | None = None
     nivel_max: int | None = None
     atribuido: bool | None = None
+    livre: bool | None = None
 
 
 def _condicoes(laboratorio_id: uuid.UUID, filtros: FiltrosPokemon) -> list:
@@ -57,6 +65,13 @@ def _condicoes(laboratorio_id: uuid.UUID, filtros: FiltrosPokemon) -> list:
         condicoes.append(PokemonInstancia.treinador_id.is_not(None))
     elif filtros.atribuido is False:
         condicoes.append(PokemonInstancia.treinador_id.is_(None))
+
+    if filtros.livre is True:
+        # TODO Fase 8: acrescentar "AND comprometido_entrega_id IS NULL" quando
+        # a coluna existir — e tudo que "livre" vai precisar ganhar.
+        condicoes.append(PokemonInstancia.treinador_id.is_(None))
+    elif filtros.livre is False:
+        condicoes.append(PokemonInstancia.treinador_id.is_not(None))
 
     return condicoes
 

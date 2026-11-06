@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from app.game.team import ErroDeTime
+
 
 # N818 pede sufixo "Error"; o Artigo X manda nomear o dominio da aplicacao em
 # portugues, como ja decidido em app.game.erros.ErroDeDominio.
@@ -80,3 +82,20 @@ class KitJaConcedido(ErroDeAplicacao):
     status_code = 409
     codigo = "KIT_JA_CONCEDIDO"
     mensagem_padrao = "Este laboratorio ja recebeu os Pokemon iniciais."
+
+
+class ConflitoDeTime(ErroDeAplicacao):
+    """Traduz um `ErroDeTime` de `game/team.py` para o envelope 409.
+
+    O `codigo` vem do proprio erro de dominio (TIME_CHEIO, POKEMON_JA_ATRIBUIDO,
+    TREINADOR_OCUPADO, POKEMON_COMPROMETIDO, POKEMON_DUPLICADO, ...) em vez de
+    uma tabela de traducao aqui: o contrato de API ja mora em `game/team.py`
+    (plan.md), e duplica-lo neste modulo e so uma forma de deixar os dois
+    divergirem num refactor futuro.
+    """
+
+    status_code: ClassVar[int] = 409
+
+    def __init__(self, erro: ErroDeTime) -> None:
+        self.codigo = erro.codigo
+        super().__init__(str(erro), detalhes=erro.detalhes)

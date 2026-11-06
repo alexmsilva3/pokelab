@@ -238,7 +238,7 @@ limite_treinadores = LIMITE_TREINADORES_NIVEL_1 + (nivel_laboratorio - 1) * TREI
 
 Com `LIMITE_TREINADORES_NIVEL_1 = 3`, o laboratório nível 1 comporta três treinadores, e cada nível acrescenta um. Como o limite de expedições simultâneas é o número de treinadores livres, o nível do laboratório é **o** eixo de progressão do professor.
 
-Esse limite é diferente de `TREINADORES_NO_KIT_INICIAL`, que vale 1: o laboratório nasce com um treinador e espaço para mais dois. Os dois números já foram confundidos uma vez por terem nome parecido — daí os nomes atuais, explícitos.
+Esse limite é diferente de `TREINADORES_NO_KIT_INICIAL`, que vale 3: o laboratório nasce com três treinadores para os três iniciais, ocupando todo o espaço do nível 1. Os dois números já foram confundidos uma vez por terem nome parecido — daí os nomes atuais, explícitos.
 
 ### 4.2 Stats efetivos
 
@@ -570,8 +570,10 @@ Spec em [specs/003-o-laboratorio/](specs/003-o-laboratorio/). 815 testes de back
 
 ---
 
-### Fase 4 — Corpo de Treinadores
+### Fase 4 — Corpo de Treinadores — CONCLUÍDA (2026-11-06)
 *Os três NPCs do laboratório e a montagem de times.*
+
+Spec em [specs/004-corpo-de-treinadores/](specs/004-corpo-de-treinadores/). 975 testes de backend e 52 de frontend. Revisão adversarial em quatro lentes: nenhum crítico, quatro altos corrigidos.
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|

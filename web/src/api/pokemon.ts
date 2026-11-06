@@ -17,6 +17,11 @@ export interface FiltrosListaPokemon {
   nivelMax?: number
   /** Ausente nao filtra; true so com treinador; false so no laboratorio. */
   atribuido?: boolean
+  /**
+   * Sem treinador e sem entrega (spec 004). Diferente de `atribuido: false`,
+   * que so cobre a primeira metade e vai divergir quando a Fase 8 existir.
+   */
+  livre?: boolean
   page?: number
   pageSize?: number
 }
@@ -28,6 +33,7 @@ function construirQuery(filtros: FiltrosListaPokemon): string {
   if (filtros.nivelMin !== undefined) parametros.set('nivel_min', String(filtros.nivelMin))
   if (filtros.nivelMax !== undefined) parametros.set('nivel_max', String(filtros.nivelMax))
   if (filtros.atribuido !== undefined) parametros.set('atribuido', String(filtros.atribuido))
+  if (filtros.livre !== undefined) parametros.set('livre', String(filtros.livre))
   parametros.set('page', String(filtros.page ?? 1))
   parametros.set('page_size', String(filtros.pageSize ?? 24))
 

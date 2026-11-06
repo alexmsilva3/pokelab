@@ -1,4 +1,4 @@
-.PHONY: help setup lint test test-db build ci up down logs seed ingest migrate revision shell-api clean
+.PHONY: help setup lint test test-db build ci up down logs seed ingest conta-teste migrate revision shell-api clean
 
 # O PokeLab roda lint e teste da API dentro de container, para nao depender do
 # toolchain Python local. Se preferir rodar nativamente, instale python3-venv e
@@ -43,6 +43,9 @@ migrate: ## Aplica as migracoes
 
 revision: ## Cria migracao. Uso: make revision m="mensagem"
 	docker compose exec api alembic revision --autogenerate -m "$(m)"
+
+conta-teste: ## Cria a conta de desenvolvimento do .env (idempotente)
+	@bash scripts/conta_teste.sh
 
 seed: ## Carrega data/seed/ no banco (idempotente)
 	docker compose exec -T api python -m app.seed

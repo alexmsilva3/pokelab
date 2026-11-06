@@ -396,3 +396,143 @@ button:disabled {
   display: flex;
   gap: var(--espaco-1);
 }
+
+/* --- Treinadores (spec 004) ------------------------------------------ */
+
+.tela-treinadores {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--espaco-5);
+}
+
+.treinadores-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: var(--espaco-4);
+  align-items: start;
+  margin-top: var(--espaco-4);
+}
+
+.lista-treinadores-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--espaco-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cartao-treinador {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--espaco-1);
+  width: 100%;
+  padding: var(--espaco-3);
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  text-align: center;
+}
+
+.cartao-treinador[aria-pressed='true'] {
+  border-color: var(--cor-acento);
+}
+
+.cartao-treinador-nome {
+  font-weight: 600;
+}
+
+.cartao-treinador-nivel {
+  color: var(--cor-texto-suave);
+  font-size: 0.875rem;
+}
+
+.cartao-treinador-time {
+  display: flex;
+  gap: var(--espaco-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cartao-treinador-capacidade {
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
+}
+
+.avatar-treinador {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  color: var(--cor-acento-texto);
+  font-weight: 600;
+}
+
+.montar-time {
+  position: sticky;
+  top: var(--espaco-3);
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  padding: var(--espaco-4);
+}
+
+.previa-time {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--espaco-2);
+  margin: var(--espaco-3) 0;
+}
+
+.previa-time dt {
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
+}
+
+.previa-time dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.montar-time-colunas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--espaco-4);
+  margin-top: var(--espaco-3);
+}
+
+.montar-time-lista {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--espaco-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.montar-time-lista-somente-leitura {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-2);
+  margin: var(--espaco-3) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.montar-time-lista-somente-leitura li {
+  display: flex;
+  align-items: center;
+  gap: var(--espaco-2);
+}
+
+.montar-time-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--espaco-2);
+  margin-top: var(--espaco-4);
+}

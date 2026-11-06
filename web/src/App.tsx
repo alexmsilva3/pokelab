@@ -4,6 +4,7 @@ import { Laboratorio } from '@/pages/Laboratorio'
 import { Login } from '@/pages/Login'
 import { Pokedex } from '@/pages/Pokedex'
 import { Registro } from '@/pages/Registro'
+import { Treinadores } from '@/pages/Treinadores'
 import { useSessao } from '@/store/auth'
 
 export function App() {
@@ -24,6 +25,7 @@ function Rotas() {
       <Route element={<RotaProtegida />}>
         <Route path="/laboratorio" element={<Laboratorio />} />
         <Route path="/pokedex" element={<Pokedex />} />
+        <Route path="/treinadores" element={<Treinadores />} />
       </Route>
       <Route path="*" element={<Navigate to={sessao ? '/laboratorio' : '/login'} replace />} />
     </Routes>

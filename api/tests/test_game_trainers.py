@@ -1,7 +1,8 @@
-"""Geracao de treinador: nome sorteado e avatar derivado (questao 16).
+"""Treinador: nome, avatar (questao 16) e progressao de nivel (SDD 4.1).
 
-O ponto sensivel aqui e o Artigo III. Nome e avatar precisam ser os mesmos em
-qualquer processo, em qualquer maquina, hoje e depois do proximo deploy.
+O ponto sensivel aqui e o Artigo III. Nome, avatar e curva precisam ser os
+mesmos em qualquer processo, em qualquer maquina, hoje e depois do proximo
+deploy.
 """
 
 import random
@@ -13,14 +14,23 @@ from pathlib import Path
 
 import pytest
 
-from app.game.erros import AvatarInvalido
+from app.game import balance
+from app.game.erros import AvatarInvalido, ErroDeDominio, ExperienciaInvalida
 from app.game.trainers import (
     NOMES_DE_TREINADOR,
     PALETA_AVATAR,
     Avatar,
+    NivelDeTreinadorInvalido,
+    StatusTreinador,
+    exigir_nivel_de_treinador,
+    experiencia_ganha_por_batalha,
+    experiencia_para_o_proximo_nivel,
+    experiencia_total_para_nivel,
     gerar_avatar,
     gerar_nome,
     gerar_treinador,
+    nivel_para_experiencia,
+    status_de,
 )
 
 RAIZ_API = Path(__file__).resolve().parent.parent
@@ -128,3 +138,159 @@ def test_avatar_declarado_diretamente_mantem_o_contrato():
         "iniciais": "AB",
         "cor": "#1f7a3f",
     }
+
+
+# --- Status (SDD 3.2 e invariante 3) ----------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("status", "ocupado"),
+    [
+        (StatusTreinador.DISPONIVEL, False),
+        (StatusTreinador.EM_EXPEDICAO, True),
+        (StatusTreinador.EM_ENTREGA, True),
+        (StatusTreinador.DESCANSANDO, False),
+    ],
+)
+def test_so_expedicao_e_entrega_ocupam_o_treinador(status, ocupado):
+    assert status.ocupado is ocupado
+
+
+def test_status_e_lido_do_texto_gravado_na_coluna():
+    assert status_de("EM_EXPEDICAO") is StatusTreinador.EM_EXPEDICAO
+
+
+def test_status_desconhecido_e_recusado():
+    with pytest.raises(ErroDeDominio, match="desconhecido"):
+        status_de("DE_FERIAS")
+
+
+# --- Curva de nivel (SDD 4.1) -----------------------------------------------
+
+
+def test_treinador_nasce_sem_experiencia():
+    # Nivel 1 custa zero: um treinador recem-chegado nao nasce devendo.
+    assert experiencia_total_para_nivel(1) == 0
+
+
+@pytest.mark.parametrize(
+    ("nivel", "esperado"),
+    [
+        # EXP_TREINADOR_BASE * (n - 1)^2, com EXP_TREINADOR_BASE = 60.
+        (1, 0),
+        (2, 60),
+        (3, 240),
+        (4, 540),
+        (5, 960),
+        (10, 4860),
+    ],
+)
+def test_tabela_da_curva_do_treinador(nivel, esperado):
+    assert experiencia_total_para_nivel(nivel) == esperado
+
+
+def test_curva_usa_a_constante_de_balance():
+    assert experiencia_total_para_nivel(2) == balance.EXP_TREINADOR_BASE
+
+
+def test_a_curva_do_treinador_e_quadratica():
+    # Quadratica, nao cubica como a de um Pokemon: dobrar a distancia ate o
+    # nivel 1 quadruplica o custo, em vez de multiplica-lo por oito.
+    for nivel in range(2, 51):
+        dobro = 2 * nivel - 1
+        assert experiencia_total_para_nivel(dobro) == 4 * experiencia_total_para_nivel(nivel)
+
+
+def test_experiencia_e_nivel_sao_inversos():
+    for nivel in range(1, balance.NIVEL_MAXIMO + 1):
+        assert nivel_para_experiencia(experiencia_total_para_nivel(nivel)) == nivel
+
+
+def test_experiencia_logo_abaixo_do_corte_nao_sobe_de_nivel():
+    for nivel in range(2, balance.NIVEL_MAXIMO + 1):
+        assert nivel_para_experiencia(experiencia_total_para_nivel(nivel) - 1) == nivel - 1
+
+
+def test_nivel_nunca_passa_do_maximo():
+    muito = experiencia_total_para_nivel(balance.NIVEL_MAXIMO) * 1000
+    assert nivel_para_experiencia(muito) == balance.NIVEL_MAXIMO
+
+
+def test_nivel_cresce_sem_pular_degrau():
+    anterior = 1
+    for experiencia in range(0, 5000, 7):
+        nivel = nivel_para_experiencia(experiencia)
+        assert nivel in (anterior, anterior + 1)
+        anterior = nivel
+
+
+def test_experiencia_negativa_e_recusada():
+    with pytest.raises(ExperienciaInvalida):
+        nivel_para_experiencia(-1)
+
+
+@pytest.mark.parametrize("nivel", [0, -1, balance.NIVEL_MAXIMO + 1])
+def test_nivel_fora_da_faixa_e_recusado(nivel):
+    with pytest.raises(NivelDeTreinadorInvalido):
+        experiencia_total_para_nivel(nivel)
+    with pytest.raises(NivelDeTreinadorInvalido):
+        exigir_nivel_de_treinador(nivel)
+
+
+def test_quanto_falta_para_o_proximo_nivel():
+    assert experiencia_para_o_proximo_nivel(0) == 60
+    assert experiencia_para_o_proximo_nivel(59) == 1
+    assert experiencia_para_o_proximo_nivel(60) == 180
+
+
+def test_no_nivel_maximo_nao_existe_proximo_nivel():
+    # None e nao zero: zero diria que falta nada, ou seja, que a proxima
+    # experiencia faz subir. Mesmo contrato de PokemonDetalhe.
+    assert experiencia_para_o_proximo_nivel(experiencia_total_para_nivel(100)) is None
+    assert experiencia_para_o_proximo_nivel(10**9) is None
+
+
+# --- Ganho por batalha (SDD 4.1) --------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("total_da_batalha", "esperado"),
+    [
+        # Um terco do total que a batalha gerou, antes da divisao entre o time.
+        (0, 0),
+        (1, 0),
+        (3, 1),
+        (30, 10),
+        (100, 33),
+        (999, 333),
+    ],
+)
+def test_treinador_leva_um_terco_da_experiencia_da_batalha(total_da_batalha, esperado):
+    assert experiencia_ganha_por_batalha(total_da_batalha) == esperado
+
+
+def test_um_terco_exato_nao_perde_para_o_ponto_flutuante():
+    # Com float, 3 * (1/3) nao fecha em 1 e o treinador perderia experiencia a
+    # cada batalha redonda. A conta corre em Fraction exata.
+    for multiplo in range(1, 500):
+        assert experiencia_ganha_por_batalha(multiplo * 3) == multiplo
+
+
+def test_ganho_do_treinador_independe_do_tamanho_do_time():
+    # A base e a experiencia total da batalha, nao a parcela de cada Pokemon:
+    # o tamanho do time e escolha tatica, nao imposto sobre a carreira.
+    total = 210
+    por_pokemon = {participantes: total // participantes for participantes in (1, 2, 3)}
+    assert por_pokemon == {1: 210, 2: 105, 3: 70}
+    assert {experiencia_ganha_por_batalha(total) for _ in por_pokemon} == {70}
+
+
+def test_ganho_por_batalha_e_deterministico():
+    primeira = [experiencia_ganha_por_batalha(total) for total in range(200)]
+    segunda = [experiencia_ganha_por_batalha(total) for total in range(200)]
+    assert primeira == segunda
+
+
+def test_batalha_com_experiencia_negativa_e_recusada():
+    with pytest.raises(ExperienciaInvalida):
+        experiencia_ganha_por_batalha(-1)

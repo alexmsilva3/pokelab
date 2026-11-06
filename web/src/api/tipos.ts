@@ -193,3 +193,73 @@ export interface ItemEmEstoque {
 export interface RespostaItens {
   items: ItemEmEstoque[]
 }
+
+// --- Treinadores (spec 004) ---------------------------------------------
+
+/**
+ * Identidade visual sem arquivo (game/trainers.py::Avatar): iniciais sobre
+ * uma cor, ambas derivadas do nome pelo servidor. O frontend desenha, nunca
+ * busca imagem.
+ */
+export interface AvatarTreinador {
+  iniciais: string
+  cor: string
+}
+
+/** Os quatro estados do treinador (SDD 3.2), no mesmo nome da coluna. */
+export type StatusTreinador = 'DISPONIVEL' | 'EM_EXPEDICAO' | 'EM_ENTREGA' | 'DESCANSANDO'
+
+/**
+ * Linha de GET /trainers. O time vem em miniatura (os mesmos campos de
+ * PokemonResumo) para o cartao desenhar os sprites sem uma segunda chamada.
+ */
+export interface TreinadorResumo {
+  id: string
+  nome: string
+  avatar: AvatarTreinador
+  nivel: number
+  experiencia: number
+  status: StatusTreinador
+  /** Derivado pelo servidor: o invariante 3 do SDD nao se reimplementa aqui. */
+  ocupado: boolean
+  /** Tamanho maximo de time, vindo do balance do servidor. */
+  tamanho_maximo_time: number
+  time: PokemonResumo[]
+  /** CAPACIDADE_TOTAL_TREINADOR menos o tamanho do time, pronta do servidor. */
+  capacidade_bagagem: number
+}
+
+export interface RespostaTreinadores {
+  items: TreinadorResumo[]
+}
+
+/**
+ * Corpo de GET /trainers/{id} e da resposta de PUT /trainers/{id}/team: os
+ * mesmos campos da lista, mais o que so faz sentido ao abrir a ficha —
+ * experiencia para o proximo nivel e o poder do time (SDD 4.3), ambos inteiros
+ * ja arredondados pelo servidor.
+ */
+export interface TreinadorDetalhe extends TreinadorResumo {
+  experiencia_para_proximo_nivel: number
+  poder: number
+}
+
+/** Corpo de PUT /trainers/{id}/team e de POST /trainers/{id}/team/preview. */
+export interface ComposicaoTimeEntrada {
+  pokemon_ids: string[]
+}
+
+/**
+ * Resposta da previa (plan.md): valida sem gravar. Quando a composicao e
+ * recusada, `poder` e `capacidade_bagagem` descrevem o time ATUAL do
+ * treinador, nao a composicao hipotetica — ela nao muda nada, entao nao ha
+ * poder dela para mostrar. `motivo` e o texto que o servidor escreveu; a tela
+ * exibe sem reescrever.
+ */
+export interface PreviaTime {
+  poder: number
+  capacidade_bagagem: number
+  valido: boolean
+  codigo?: string | null
+  motivo?: string | null
+}

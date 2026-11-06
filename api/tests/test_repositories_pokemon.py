@@ -202,6 +202,40 @@ def test_filtro_atribuido_tres_estados(sessao_db):
     assert [p.id for p in so_livres] == [livre.id]
 
 
+def test_filtro_livre_traz_so_quem_esta_sem_treinador(sessao_db):
+    """Spec 004, secao 7 do plano: `livre` e um conceito mais largo que
+    `atribuido=False`. Nesta fase ele so tem a metade "sem treinador" para
+    testar, porque `comprometido_entrega_id` so existe a partir da Fase 8 — e
+    e por isso que este teste e dele, nao uma repeticao do de `atribuido`."""
+    laboratorio_id = _criar_laboratorio(sessao_db)
+    treinador = Treinador(
+        laboratorio_id=laboratorio_id,
+        nome="Misty",
+        avatar={"iniciais": "MI", "cor": "#000000"},
+        nivel=1,
+        experiencia=0,
+        status="DISPONIVEL",
+    )
+    sessao_db.add(treinador)
+    sessao_db.flush()
+
+    livre = _inserir_pokemon(sessao_db, laboratorio_id, especie_id=1, nivel=5)
+    no_time = _inserir_pokemon(
+        sessao_db, laboratorio_id, especie_id=1, nivel=5, treinador_id=treinador.id
+    )
+    sessao_db.commit()
+
+    so_livres, _, _, _ = pokemon_repo.listar(
+        sessao_db, laboratorio_id, FiltrosPokemon(livre=True), page=1, page_size=20
+    )
+    so_nao_livres, _, _, _ = pokemon_repo.listar(
+        sessao_db, laboratorio_id, FiltrosPokemon(livre=False), page=1, page_size=20
+    )
+
+    assert [p.id for p in so_livres] == [livre.id]
+    assert [p.id for p in so_nao_livres] == [no_time.id]
+
+
 def test_listagem_e_escopada_ao_laboratorio(sessao_db):
     lab_a = _criar_laboratorio(sessao_db)
     professor_b = professores_repo.criar(

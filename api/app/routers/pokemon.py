@@ -55,6 +55,7 @@ def listar_pokemon(
     nivel_min: int | None = Query(default=None, ge=1, le=balance.NIVEL_MAXIMO),
     nivel_max: int | None = Query(default=None, ge=1, le=balance.NIVEL_MAXIMO),
     atribuido: bool | None = None,
+    livre: bool | None = None,
     page: int = Query(default=1, ge=1, le=PAGE_MAXIMA),
     # Sem `le` aqui de proposito: o teto e cortado em silencio no servico
     # (plan.md), nao recusado com 422.
@@ -63,7 +64,7 @@ def listar_pokemon(
     sessao: Session = Depends(get_db),
 ) -> PaginaPokemon:
     filtros = FiltrosPokemon(
-        tipo=tipo, nivel_min=nivel_min, nivel_max=nivel_max, atribuido=atribuido
+        tipo=tipo, nivel_min=nivel_min, nivel_max=nivel_max, atribuido=atribuido, livre=livre
     )
     return pokemon_service.listar(
         sessao, sessao_professor.laboratorio.id, filtros, page=page, page_size=page_size

@@ -224,6 +224,7 @@ export function Laboratorio() {
         <h1>{laboratorio.nome}</h1>
         <p>Professor {professor.nome_exibicao ?? professor.usuario}</p>
         <Link to="/pokedex">Ver Pokedex</Link>
+        <Link to="/treinadores">Ver treinadores</Link>
       </header>
 
       <dl className="resumo-laboratorio" aria-label="Resumo do laboratorio">

@@ -12,6 +12,7 @@
  */
 
 import type {
+  AvatarTreinador,
   EntradaPokedexCapturada,
   EntradaPokedexDesconhecida,
   EntradaPokedexVista,
@@ -19,13 +20,17 @@ import type {
   PerfilCompleto,
   PokemonDetalhe,
   PokemonResumo,
+  PreviaTime,
   Professor,
   RespostaItens,
   RespostaListaPokemon,
   RespostaPokedex,
+  RespostaTreinadores,
   ResumoLaboratorio,
   Sessao,
   StatsEfetivos,
+  TreinadorDetalhe,
+  TreinadorResumo,
 } from '@/api/tipos'
 
 export function professorExemplo(sobrescritas: Partial<Professor> = {}): Professor {
@@ -209,6 +214,73 @@ export function itensExemplo(sobrescritas: Partial<RespostaItens> = {}): Respost
       itemEstoqueExemplo({ item_id: 'potion', nome: 'Potion', categoria: 'CURA', quantidade: 5 }),
       itemEstoqueExemplo({ item_id: 'revive', nome: 'Revive', categoria: 'REVIVE', quantidade: 1 }),
     ],
+    ...sobrescritas,
+  }
+}
+
+// --- Treinadores (spec 004) ---------------------------------------------
+
+export function avatarTreinadorExemplo(
+  sobrescritas: Partial<AvatarTreinador> = {},
+): AvatarTreinador {
+  return { iniciais: 'AS', cor: '#2563a8', ...sobrescritas }
+}
+
+export function treinadorResumoExemplo(
+  sobrescritas: Partial<TreinadorResumo> = {},
+): TreinadorResumo {
+  const status = sobrescritas.status ?? 'DISPONIVEL'
+  return {
+    id: 'treinador-1',
+    nome: 'Ash',
+    avatar: avatarTreinadorExemplo(),
+    nivel: 1,
+    experiencia: 0,
+    status,
+    // Derivado do status, como o servidor faz, para que um teste que pede
+    // EM_EXPEDICAO nao precise lembrar de passar `ocupado` junto e acabe
+    // montando um payload que o servidor jamais enviaria.
+    ocupado: status === 'EM_EXPEDICAO' || status === 'EM_ENTREGA',
+    tamanho_maximo_time: 3,
+    time: [],
+    capacidade_bagagem: 6,
+    ...sobrescritas,
+  }
+}
+
+export function respostaTreinadoresExemplo(
+  sobrescritas: Partial<RespostaTreinadores> = {},
+): RespostaTreinadores {
+  return {
+    items: [
+      treinadorResumoExemplo({ id: 'treinador-1', nome: 'Ash' }),
+      treinadorResumoExemplo({ id: 'treinador-2', nome: 'Misty' }),
+      treinadorResumoExemplo({ id: 'treinador-3', nome: 'Brock' }),
+    ],
+    ...sobrescritas,
+  }
+}
+
+export function treinadorDetalheExemplo(
+  sobrescritas: Partial<TreinadorDetalhe> = {},
+): TreinadorDetalhe {
+  // As sobrescritas vao para o resumo tambem, senao campos derivados dele
+  // (como `ocupado`, que sai do status) ficariam no valor padrao enquanto o
+  // status pedido ja seria outro — um payload que o servidor nunca enviaria.
+  return {
+    ...treinadorResumoExemplo(sobrescritas),
+    experiencia_para_proximo_nivel: 60,
+    poder: 0,
+    ...sobrescritas,
+  }
+}
+
+export function previaTimeExemplo(sobrescritas: Partial<PreviaTime> = {}): PreviaTime {
+  return {
+    poder: 13,
+    capacidade_bagagem: 5,
+    valido: true,
+    codigo: null,
     ...sobrescritas,
   }
 }

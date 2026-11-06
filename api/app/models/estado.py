@@ -102,6 +102,14 @@ class Treinador(Base):
     expedicoes_concluidas: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     entregas_concluidas: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # Nenhuma coluna nova: so o lado inverso de `PokemonInstancia.treinador_id`,
+    # que ja existe desde a Fase 2. `back_populates` com `PokemonInstancia.treinador`
+    # e o que deixa `selectinload`/`joinedload` buscarem o time inteiro com a
+    # especie junta numa unica consulta extra (spec 004, secao 4 do plano).
+    time: Mapped[list[PokemonInstancia]] = relationship(
+        "PokemonInstancia", back_populates="treinador", order_by="PokemonInstancia.id"
+    )
+
     def __repr__(self) -> str:
         return f"<Treinador {self.id} {self.nome}>"
 
@@ -140,7 +148,7 @@ class PokemonInstancia(Base):
     # explicito no repositorio, para nao reintroduzir o N+1 que esses mesmos
     # campos existem para evitar.
     especie: Mapped[PokemonEspecie] = relationship(PokemonEspecie)
-    treinador: Mapped[Treinador | None] = relationship(Treinador)
+    treinador: Mapped[Treinador | None] = relationship(Treinador, back_populates="time")
     local_captura: Mapped[Local | None] = relationship(Local)
 
     def __repr__(self) -> str:
