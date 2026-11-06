@@ -323,3 +323,95 @@ export interface PreviaTime {
   codigo?: string | null
   motivo?: string | null
 }
+
+// --- Expedicoes (spec 006) ------------------------------------------------
+
+/**
+ * O que fica gravado na coluna `status` (SDD 3.2). `AGUARDANDO_RELATORIO`
+ * NAO e um destes valores: e derivado pelo servidor a cada leitura a partir
+ * do `eta`, nunca uma coluna (plan.md, "O estado que ninguem pediu").
+ */
+export type StatusExpedicao = 'EM_CURSO' | 'CONCLUIDA_SUCESSO' | 'CONCLUIDA_FALHA' | 'ABORTADA'
+
+/**
+ * O que a tela mostra (plan.md, `game/expedition.py::estado_observado`): a
+ * mesma `EM_CURSO` gravada vira `AGUARDANDO_RELATORIO` quando o `eta` ja
+ * passou. O calculo e inteiramente do servidor — o cliente nunca compara
+ * `eta` com o relogio local (Artigo II).
+ */
+export type EstadoObservadoExpedicao =
+  | 'EM_CURSO'
+  | 'AGUARDANDO_RELATORIO'
+  | 'CONCLUIDA_SUCESSO'
+  | 'CONCLUIDA_FALHA'
+  | 'ABORTADA'
+
+/** Uma linha de carga na entrada: o que o professor propoe levar. */
+export interface ItemCargaEntrada {
+  item_id: string
+  quantidade: number
+}
+
+/** A mesma linha como o servidor devolve, com o nome do item ja resolvido. */
+export interface ItemCargaLer {
+  item_id: string
+  nome: string
+  quantidade_levada: number
+}
+
+/** Corpo de POST /expeditions e de POST /expeditions/preview (plan.md). */
+export interface ExpedicaoEntrada {
+  treinador_id: string
+  local_id: string
+  carga: ItemCargaEntrada[]
+}
+
+/**
+ * Linha de GET /expeditions e corpo de GET /expeditions/{id}, da resposta de
+ * POST /expeditions e de DELETE /expeditions/{id} (plan.md). `estado_observado`
+ * e `segundos_restantes` sao recalculados pelo servidor a cada leitura, nunca
+ * gravados — e o que impede dois lugares da tela derivarem diferente.
+ */
+export interface ExpedicaoLer {
+  id: string
+  treinador_id: string
+  treinador_nome: string
+  local_destino_id: string
+  local_destino_nome: string
+  status: StatusExpedicao
+  estado_observado: EstadoObservadoExpedicao
+  started_at: string
+  eta: string
+  /** Nunca negativo; zero quando o prazo ja passou (plan.md). */
+  segundos_restantes: number
+  duracao_minutos: number
+  dificuldade_calculada: number
+  poder_time_calculado: number
+  carga: ItemCargaLer[]
+}
+
+export interface RespostaExpedicoes {
+  items: ExpedicaoLer[]
+  total: number
+}
+
+/**
+ * Resposta de POST /expeditions/preview (plan.md): valida sem gravar, com a
+ * mesma funcao de dominio do despacho. Quando a composicao e recusada,
+ * `motivo` e o texto que o SERVIDOR escreveu; a tela exibe sem reescrever, do
+ * mesmo jeito que `PreviaTime` faz para o time.
+ */
+export interface PreviaExpedicao {
+  // Todos nulos quando `valido` e falso: nao ha duracao nem chance de uma
+  // composicao que o servidor recusa. Declarados como nao-anulaveis, a tela
+  // desenhava "Chance estimada: 0%" ao lado do motivo da recusa.
+  duracao_minutos: number | null
+  eta_estimado: string | null
+  dificuldade: number | null
+  /** Fracao 0..1; a tela formata como percentual, nunca recalcula (Artigo II). */
+  chance_estimada: number | null
+  capacidade_bagagem: number | null
+  valido: boolean
+  codigo?: string | null
+  motivo?: string | null
+}

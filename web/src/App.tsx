@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { RotaProtegida } from '@/components/RotaProtegida'
+import { Expedicoes } from '@/pages/Expedicoes'
 import { Laboratorio } from '@/pages/Laboratorio'
 import { Login } from '@/pages/Login'
 import { Mapa } from '@/pages/Mapa'
@@ -28,6 +29,7 @@ function Rotas() {
         <Route path="/pokedex" element={<Pokedex />} />
         <Route path="/treinadores" element={<Treinadores />} />
         <Route path="/mapa" element={<Mapa />} />
+        <Route path="/expedicoes" element={<Expedicoes />} />
       </Route>
       <Route path="*" element={<Navigate to={sessao ? '/laboratorio' : '/login'} replace />} />
     </Routes>

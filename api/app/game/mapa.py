@@ -443,8 +443,9 @@ def duracao_estimada(
 
     `escala` e o `EXPEDITION_TIME_SCALE` do ADR-004, que e ambiente e nao
     calibragem: por isso chega como parametro e nao mora em `balance.py`. Ela
-    **divide**, como a formula do SDD escreve, entao um valor acima de 1
-    acelera e um valor abaixo de 1 alonga.
+    **multiplica**, entao um valor abaixo de 1 encurta e um valor acima de 1
+    alonga — o SDD dizia "divide" ate a Fase 5 e isso era um bug do documento,
+    corrigido depois de o revisor pegar a inversao.
 
     Os argumentos sao todos nomeados de proposito: sao cinco numeros, e uma
     troca de posicao entre eles produziria uma duracao plausivel e errada.

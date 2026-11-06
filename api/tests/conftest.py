@@ -21,6 +21,9 @@ from app.seed import executar
 # As tabelas de referencia (especies, locais, itens) ficam de fora: sao o
 # acervo do seed, nao estado de teste.
 TABELAS_DE_ESTADO = (
+    "expedicao_eventos",
+    "expedicao_itens",
+    "expedicoes",
     "pokemon_instancias",
     "treinadores",
     "pokedex_entradas",

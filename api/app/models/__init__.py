@@ -1,4 +1,7 @@
 from app.models.estado import (
+    Expedicao,
+    ExpedicaoEvento,
+    ExpedicaoItem,
     ItemEstoque,
     Laboratorio,
     LocalDesbloqueado,
@@ -11,6 +14,9 @@ from app.models.estado import (
 from app.models.referencia import Item, Local, LocalEncontro, PokemonEspecie
 
 __all__ = [
+    "Expedicao",
+    "ExpedicaoEvento",
+    "ExpedicaoItem",
     "Item",
     "ItemEstoque",
     "Laboratorio",

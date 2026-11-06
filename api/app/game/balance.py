@@ -91,9 +91,23 @@ CASAS_DECIMAIS_PODER: Final[int] = 1
 BONUS_POR_NIVEL_TREINADOR: Final[float] = 0.03  # +3% de poder por nivel
 FATOR_DIFICULDADE: Final[float] = 1.0  # escala global, alvo da Fase 8
 
+# A dificuldade sai com a mesma precisao do poder porque os dois sao gravados
+# lado a lado na expedicao e divididos um pelo outro: a razao recalculada a
+# partir das colunas precisa dar exatamente a chance que o professor viu.
+CASAS_DECIMAIS_DIFICULDADE: Final[int] = 1
+
 INCLINACAO_SIGMOIDE: Final[float] = 2.5
 P_VITORIA_MINIMA: Final[float] = 0.05
 P_VITORIA_MAXIMA: Final[float] = 0.95
+
+# Quatro casas na probabilidade: a tela mostra porcentagem com uma decimal, e
+# duas casas a mais evitam que o arredondamento da exibicao decida o resultado.
+CASAS_DECIMAIS_CHANCE: Final[int] = 4
+
+# Abaixo de -709 o exp() de ponto flutuante duplo ja devolve zero, e converter
+# o expoente para float estouraria. Nao e calibragem: e o limite do double, e
+# so existe para que uma razao absurda sature no teto em vez de levantar.
+EXPOENTE_LIMITE_SIGMOIDE: Final[float] = 709.0
 
 # --- Duracao da expedicao (SDD 4.3) ----------------------------------------
 
@@ -110,6 +124,11 @@ BONUS_ITENS_MAXIMO: Final[float] = 0.25
 # conta chega a valores abaixo de um minuto, e uma expedicao de zero minuto
 # terminaria no mesmo instante em que parte: nao ha ida nem relatorio.
 DURACAO_MINIMA_MINUTOS: Final[int] = 1
+
+# Maior semente aceita no despacho (ADR-005). E a largura do inteiro que a
+# coluna guarda: uma semente maior que isto seria truncada na gravacao, e
+# truncar semente quebra o Artigo III sem dar sinal nenhum.
+SEED_MAXIMO: Final[int] = 2**63 - 1
 
 # --- Encontros (SDD 4.4) ---------------------------------------------------
 

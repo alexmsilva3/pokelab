@@ -614,8 +614,10 @@ Spec em [specs/005-mapa-de-kanto/](specs/005-mapa-de-kanto/). 1062 testes de bac
 
 ---
 
-### Fase 6 — Despacho de Expedições
+### Fase 6 — Despacho de Expedições — CONCLUÍDA (2026-11-06)
 *Envio, carga, slots e contagem de tempo.*
+
+Spec em [specs/006-despacho-de-expedicoes/](specs/006-despacho-de-expedicoes/). 719 casos de backend e 79 de frontend. Revisão adversarial em quatro lentes: um crítico, achado pelas quatro — o filtro de status comparava contra o estado observado enquanto o cliente acreditava filtrar a coluna gravada.
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|

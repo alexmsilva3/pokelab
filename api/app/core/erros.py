@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from app.game.expedition import ErroDeExpedicao as _ErroDeExpedicaoNoDominio
+from app.game.mapa import DestinoForaDeAlcance as _DestinoForaDeAlcanceNoDominio
 from app.game.mapa import LocalDesconhecido as _LocalDesconhecidoNoDominio
 from app.game.team import ErroDeTime
 
@@ -116,3 +118,39 @@ class LocalNaoEncontrado(ErroDeAplicacao):
     def __init__(self, erro: _LocalDesconhecidoNoDominio) -> None:
         self.codigo = erro.codigo
         super().__init__(str(erro), detalhes=erro.detalhes)
+
+
+class ConflitoDeExpedicao(ErroDeAplicacao):
+    """Traduz uma recusa de `game.expedition.calcular_despacho` para 409.
+
+    O `codigo` vem do proprio erro de dominio (TREINADOR_OCUPADO, TIME_VAZIO,
+    DESTINO_FORA_DE_ALCANCE, ESTOQUE_INSUFICIENTE, CARGA_INVALIDA, ...), nunca
+    de uma tabela de traducao aqui — mesmo raciocinio de `ConflitoDeTime`.
+    `DestinoForaDeAlcance` vem de `game.mapa`, nao de `game.expedition`: o
+    invariante 6 e imposto la, e a Fase 6 reusa a excecao em vez de duplicar o
+    invariante.
+    """
+
+    status_code: ClassVar[int] = 409
+
+    def __init__(self, erro: _ErroDeExpedicaoNoDominio | _DestinoForaDeAlcanceNoDominio) -> None:
+        self.codigo = erro.codigo
+        super().__init__(str(erro), detalhes=erro.detalhes)
+
+
+class ExpedicaoNaoEstaEmCurso(ErroDeAplicacao):
+    """A expedicao nao esta `EM_CURSO` no momento do aborto (criterio 12 da spec 006).
+
+    Cobre tanto quem ja terminou de verdade (concluida ou abortada) quanto
+    quem so esta `AGUARDANDO_RELATORIO`: o `eta` ja passou, a missao acabou
+    na pratica, e abortar uma expedicao que ja terminou nao interrompe nada —
+    so apagaria a chance de a Fase 7 gerar o relatorio dela. Decisao
+    registrada aqui porque a spec fala em abortar "em andamento", e isto
+    deixou de ser andamento.
+    """
+
+    status_code: ClassVar[int] = 409
+    codigo: ClassVar[str] = "EXPEDICAO_NAO_ESTA_EM_CURSO"
+    mensagem_padrao: ClassVar[str] = (
+        "Esta expedicao ja nao esta em curso e por isso nao pode ser abortada."
+    )

@@ -23,6 +23,7 @@ from collections.abc import Sequence
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.game.trainers import StatusTreinador
 from app.models import PokemonInstancia, Treinador
 
 
@@ -87,6 +88,30 @@ def travar_treinador(
         .where(Treinador.laboratorio_id == laboratorio_id, Treinador.id == treinador_id)
         .with_for_update()
     )
+
+
+def travar_treinador_com_time(
+    sessao: Session, laboratorio_id: uuid.UUID, treinador_id: uuid.UUID
+) -> Treinador | None:
+    """Trava o treinador e carrega o time, para quem precisa do poder sob lock (spec 006).
+
+    `with_for_update()` recai sobre a consulta principal de `Treinador`; o
+    time continua vindo por `selectinload` — uma segunda consulta, sem join —
+    entao a trava nunca encosta num `PokemonInstancia`, so no treinador. E o
+    que basta: o despacho so precisa impedir que ESTE treinador va para duas
+    expedicoes ao mesmo tempo, nao congelar o time dele.
+    """
+    consulta = _com_time_e_especie(
+        select(Treinador).where(
+            Treinador.laboratorio_id == laboratorio_id, Treinador.id == treinador_id
+        )
+    ).with_for_update()
+    return sessao.scalars(consulta).unique().one_or_none()
+
+
+def atualizar_status(treinador: Treinador, status: StatusTreinador) -> None:
+    """Grava o novo status do treinador (ocupado ao despachar, livre ao voltar ou abortar)."""
+    treinador.status = status.value
 
 
 def _pokemon_envolvidos(

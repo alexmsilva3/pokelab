@@ -17,14 +17,18 @@ import type {
   EntradaPokedexDesconhecida,
   EntradaPokedexVista,
   EspecieAvistada,
+  ExpedicaoLer,
+  ItemCargaLer,
   ItemEmEstoque,
   LocalDetalhado,
   LocalNoMapa,
   PerfilCompleto,
   PokemonDetalhe,
   PokemonResumo,
+  PreviaExpedicao,
   PreviaTime,
   Professor,
+  RespostaExpedicoes,
   RespostaItens,
   RespostaListaPokemon,
   RespostaMapa,
@@ -433,6 +437,63 @@ export function localDetalhadoExemplo(
     ...localNoMapaExemplo(),
     encontros_base: 2,
     especies_avistadas: [especieAvistadaExemplo()],
+    ...sobrescritas,
+  }
+}
+
+// --- Expedicoes (spec 006) ------------------------------------------------
+
+export function itemCargaLerExemplo(sobrescritas: Partial<ItemCargaLer> = {}): ItemCargaLer {
+  return { item_id: 'potion', nome: 'Potion', quantidade_levada: 2, ...sobrescritas }
+}
+
+/**
+ * Uma expedicao em curso, a meio caminho do prazo. `segundos_restantes` e
+ * `estado_observado` sao os dois campos que o servidor recalcula a cada
+ * leitura (plan.md) — testes de contador sobrescrevem so `segundos_restantes`.
+ */
+export function expedicaoLerExemplo(sobrescritas: Partial<ExpedicaoLer> = {}): ExpedicaoLer {
+  return {
+    id: 'expedicao-1',
+    treinador_id: 'treinador-1',
+    treinador_nome: 'Ash',
+    local_destino_id: 'route-1',
+    local_destino_nome: 'Route 1',
+    status: 'EM_CURSO',
+    estado_observado: 'EM_CURSO',
+    started_at: '2026-01-01T12:00:00Z',
+    eta: '2026-01-01T12:07:00Z',
+    segundos_restantes: 210,
+    duracao_minutos: 7,
+    dificuldade_calculada: 4,
+    poder_time_calculado: 13,
+    carga: [],
+    ...sobrescritas,
+  }
+}
+
+export function respostaExpedicoesExemplo(
+  sobrescritas: Partial<RespostaExpedicoes> = {},
+): RespostaExpedicoes {
+  return {
+    items: [expedicaoLerExemplo()],
+    total: 1,
+    ...sobrescritas,
+  }
+}
+
+export function previaExpedicaoExemplo(
+  sobrescritas: Partial<PreviaExpedicao> = {},
+): PreviaExpedicao {
+  return {
+    duracao_minutos: 7,
+    eta_estimado: '2026-01-01T12:07:00Z',
+    dificuldade: 4,
+    chance_estimada: 0.68,
+    capacidade_bagagem: 5,
+    valido: true,
+    codigo: null,
+    motivo: null,
     ...sobrescritas,
   }
 }

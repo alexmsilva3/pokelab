@@ -15,6 +15,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -25,7 +26,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.models.referencia import Local, PokemonEspecie
+from app.models.referencia import Item, Local, PokemonEspecie
 
 
 class Professor(Base):
@@ -240,3 +241,133 @@ class PokedexAvistamento(Base):
 
     def __repr__(self) -> str:
         return f"<PokedexAvistamento {self.laboratorio_id}/{self.local_id}/{self.especie_id}>"
+
+
+class Expedicao(Base):
+    """Uma missao despachada, em curso ou ja concluida (SDD 3.2, spec 006).
+
+    `status` guarda so o que e fato gravado: `EM_CURSO`, `CONCLUIDA_SUCESSO`,
+    `CONCLUIDA_FALHA`, `ABORTADA`. `AGUARDANDO_RELATORIO` nao e valor de
+    coluna — e derivado comparando `eta` com o relogio a cada leitura, em
+    `game.expedition.estado_observado`. Gravar essa transicao exigiria um job
+    varrendo o banco, e o ADR-004 decidiu nao ter um.
+
+    Sem coluna para o caminho percorrido: origem e destino bastam para a Fase
+    7 recalcular dificuldade e encontros, e o SDD 3.2 nao lista mais colunas
+    que estas.
+    """
+
+    __tablename__ = "expedicoes"
+    __table_args__ = (
+        # GET /expeditions filtra sempre por laboratorio e quase sempre por
+        # status — e a consulta mais frequente da tela (plan.md da spec 006).
+        # Cobre tambem "so laboratorio_id", pelo prefixo, sem precisar de um
+        # segundo indice.
+        Index("ix_expedicoes_laboratorio_status", "laboratorio_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    laboratorio_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("laboratorios.id"), nullable=False
+    )
+    treinador_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("treinadores.id"), nullable=False
+    )
+    local_destino_id: Mapped[str] = mapped_column(ForeignKey("locais.id"), nullable=False)
+    local_origem_id: Mapped[str] = mapped_column(ForeignKey("locais.id"), nullable=False)
+
+    # EM_CURSO | CONCLUIDA_SUCESSO | CONCLUIDA_FALHA | ABORTADA (SDD 3.2)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="EM_CURSO")
+
+    # A semente desta expedicao (ADR-005, invariante 13). BigInteger porque
+    # balance.SEED_MAXIMO e o teto de um inteiro de 64 bits com sinal.
+    seed: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    eta: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Nulo ate a Fase 7 resolver: uma expedicao em curso, ou ja terminada e
+    # aguardando relatorio, ainda nao tem resultado gravado.
+    resolvida_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    duracao_minutos: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Gravadas com a mesma precisao que o professor viu no envio
+    # (game.expedition.dificuldade_do_local/chance_estimada): a Fase 7 vai
+    # resolver os encontros a partir destas colunas, e um relatorio com um
+    # numero diferente do que foi mostrado no despacho nao explicaria o
+    # proprio resultado.
+    dificuldade_calculada: Mapped[float] = mapped_column(Float, nullable=False)
+    poder_time_calculado: Mapped[float] = mapped_column(Float, nullable=False)
+
+    treinador: Mapped[Treinador] = relationship(Treinador)
+    local_destino: Mapped[Local] = relationship(Local, foreign_keys=[local_destino_id])
+    local_origem: Mapped[Local] = relationship(Local, foreign_keys=[local_origem_id])
+    itens: Mapped[list[ExpedicaoItem]] = relationship(
+        "ExpedicaoItem", back_populates="expedicao", order_by="ExpedicaoItem.item_id"
+    )
+    eventos: Mapped[list[ExpedicaoEvento]] = relationship(
+        "ExpedicaoEvento", back_populates="expedicao", order_by="ExpedicaoEvento.ordem"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Expedicao {self.id} status={self.status}>"
+
+
+class ExpedicaoItem(Base):
+    """A carga de uma expedicao: o que foi levado e o que ja foi gasto (SDD 3.2).
+
+    Chave composta em vez de surrogate, como `ItemEstoque`: o par
+    (expedicao, item) e naturalmente unico, e um id proprio so acrescentaria
+    uma coluna sem significado.
+    """
+
+    __tablename__ = "expedicao_itens"
+
+    expedicao_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("expedicoes.id"), primary_key=True
+    )
+    item_id: Mapped[str] = mapped_column(ForeignKey("itens.id"), primary_key=True)
+
+    quantidade_levada: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Zero ate a Fase 7 consumir Pocoes e Revives durante a resolucao.
+    quantidade_consumida: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    expedicao: Mapped[Expedicao] = relationship(Expedicao, back_populates="itens")
+    item: Mapped[Item] = relationship(Item)
+
+    def __repr__(self) -> str:
+        return f"<ExpedicaoItem {self.expedicao_id}/{self.item_id}={self.quantidade_levada}>"
+
+
+class ExpedicaoEvento(Base):
+    """Uma linha do relatorio de campo (SDD 3.2).
+
+    Nasce vazia nesta fase: quem preenche e a Fase 7, na resolucao. A tabela
+    existe desde ja para nao exigir uma migracao isolada depois, mesmo padrao
+    de `PokedexAvistamento` na Fase 5.
+    """
+
+    __tablename__ = "expedicao_eventos"
+    __table_args__ = (
+        # A Fase 7 le os eventos de uma expedicao sempre em ordem; a
+        # unicidade impede duas linhas disputando o mesmo lugar na timeline
+        # se a resolucao um dia rodar duas vezes por engano (Artigo VII).
+        Index("ix_expedicao_eventos_expedicao_ordem", "expedicao_id", "ordem", unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    expedicao_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("expedicoes.id"), nullable=False
+    )
+    ordem: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # PARTIDA | BATALHA | CAPTURA | CAPTURA_FALHA | DESCOBERTA | ITEM |
+    # CONTRATEMPO | SUBIU_NIVEL | EVOLUCAO | RETORNO (SDD 3.2)
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)
+    texto: Mapped[str] = mapped_column(String(500), nullable=False)
+    payload: Mapped[dict | None] = mapped_column(JSONB)
+    ocorrido_em_minuto: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    expedicao: Mapped[Expedicao] = relationship(Expedicao, back_populates="eventos")
+
+    def __repr__(self) -> str:
+        return f"<ExpedicaoEvento {self.id} expedicao={self.expedicao_id} tipo={self.tipo}>"

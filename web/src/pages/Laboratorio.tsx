@@ -226,6 +226,7 @@ export function Laboratorio() {
         <Link to="/pokedex">Ver Pokedex</Link>
         <Link to="/treinadores">Ver treinadores</Link>
         <Link to="/mapa">Ver mapa</Link>
+        <Link to="/expedicoes">Ver expedicoes</Link>
       </header>
 
       <dl className="resumo-laboratorio" aria-label="Resumo do laboratorio">
