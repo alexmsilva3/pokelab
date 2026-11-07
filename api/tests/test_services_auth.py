@@ -151,3 +151,30 @@ def test_registro_concorrente_com_mesmo_usuario_concede_o_kit_uma_unica_vez(sess
         select(PokemonInstancia).where(PokemonInstancia.laboratorio_id == sucessos[0])
     ).all()
     assert len(pokemon) == 3
+
+
+def test_registros_concorrentes_com_o_mesmo_usuario_rendem_uma_conta_so(sessao_db):
+    """Regressao da revisao da Fase 2, mesmo bug do teste acima: duas threads
+    em vez de cinco, e o resultado conferido pelo NOME do tipo da excecao em
+    vez de contar quantas vieram vazias -- um angulo diferente sobre a mesma
+    corrida (Artigo VII)."""
+    usuario = "corrida2threads"
+    resultados: list[str] = []
+    barreira = threading.Barrier(2)
+
+    def registrar() -> None:
+        barreira.wait()
+        with SessionLocal() as sessao:
+            try:
+                auth_service.registrar(sessao, usuario=usuario, senha="senhavalida123")
+                resultados.append("ok")
+            except Exception as erro:  # o tipo exato e justamente o que se afere
+                resultados.append(type(erro).__name__)
+
+    threads = [threading.Thread(target=registrar) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert resultados.count("ok") == 1, resultados

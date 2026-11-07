@@ -29,6 +29,7 @@ import pytest
 
 from app.game import balance
 from app.game.team import (
+    ErroDeTime,
     PokemonComprometido,
     PokemonDesconhecido,
     PokemonDuplicado,
@@ -39,8 +40,10 @@ from app.game.team import (
     TreinadorAlvo,
     TreinadorOcupado,
     capacidade_bagagem,
+    capacidade_bagagem_tolerante,
     prever_time,
     time_atual,
+    validar_pedido,
     validar_time,
 )
 from app.game.trainers import StatusTreinador
@@ -338,3 +341,50 @@ def test_previa_de_treinador_ocupado_explica_em_vez_de_so_recusar():
     assert previa.valido is False
     assert previa.codigo == "TREINADOR_OCUPADO"
     assert "em entrega" in previa.motivo
+
+
+# --- Regressao da revisao da Fase 4: capacidade tolerante e pedido barato ---
+# MEDIO: `capacidade_bagagem` levantava `TimeCheio`, e `_campos_comuns` a
+# chamava em TODA leitura: um time corrompido derrubava a listagem inteira
+# com 500. `capacidade_bagagem_tolerante` existe para a LEITURA tolerar sem
+# esconder o problema atras de um 500 -- a escrita continua estrita.
+#
+# `validar_pedido` e a validacao BARATA (tamanho e duplicata) que acontece
+# antes de qualquer consulta ao banco: uma lista absurda e recusada sem tocar
+# nas linhas do laboratorio.
+
+
+@pytest.mark.parametrize("tamanho", [0, 1, 2, 3])
+def test_capacidade_tolerante_concorda_com_a_estrita_no_dominio_valido(tamanho):
+    assert capacidade_bagagem_tolerante(tamanho) == capacidade_bagagem(tamanho)
+
+
+def test_capacidade_tolerante_nao_levanta_com_time_corrompido():
+    acima = balance.CAPACIDADE_TOTAL_TREINADOR + 5
+    assert capacidade_bagagem_tolerante(acima) == 0
+
+
+def test_capacidade_estrita_continua_recusando_o_invalido():
+    # A escrita nao afrouxa: so a leitura tolera, para nao esconder o problema
+    # atras de um 500.
+    with pytest.raises(ErroDeTime):
+        capacidade_bagagem(balance.CAPACIDADE_TOTAL_TREINADOR + 5)
+
+
+def test_pedido_grande_demais_e_recusado_sem_tocar_no_banco():
+    ids = [UUID(int=i) for i in range(1000, 1000 + balance.TAMANHO_MAXIMO_TIME + 1)]
+    with pytest.raises(ErroDeTime) as capturado:
+        validar_pedido(ids)
+    assert capturado.value.codigo == "TIME_CHEIO"
+
+
+def test_pedido_com_repetido_e_recusado_sem_tocar_no_banco():
+    repetido = UUID(int=2000)
+    with pytest.raises(ErroDeTime) as capturado:
+        validar_pedido([repetido, repetido])
+    assert capturado.value.codigo == "POKEMON_DUPLICADO"
+
+
+def test_pedido_valido_passa_pela_validacao_barata():
+    ids = [UUID(int=i) for i in range(3000, 3000 + balance.TAMANHO_MAXIMO_TIME)]
+    validar_pedido(ids)

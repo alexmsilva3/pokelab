@@ -211,6 +211,26 @@ def test_hp_efetivo_negativo_e_recusado():
         hp_atual_absoluto(-1, 50)
 
 
+# --- Regressao da revisao da Fase 3: pct zero e o SDD 4.2 -------------------
+# ALTO: o documento dizia max(1, ...) sem excecao. A regra correta e a do
+# codigo (nocauteado e nocauteado) e o SDD 4.2 foi atualizado junto, como
+# manda o Artigo VIII. Estes tres fixam a regra nas duas pontas.
+
+
+def test_pct_zero_significa_nocauteado_e_nao_um_ponto_de_hp():
+    assert hp_atual_absoluto(105, 0) == 0
+
+
+def test_pct_positivo_nunca_arredonda_para_zero():
+    # Um Pokemon a 1% de um HP alto esta machucado, nao nocauteado: mostrar 0
+    # na ficha faria o professor achar que ele caiu.
+    assert hp_atual_absoluto(200, 1) >= balance.HP_MINIMO_VIVO
+
+
+def test_hp_atual_nunca_passa_do_maximo():
+    assert hp_atual_absoluto(19, 100) == 19
+
+
 # --- Recuperacao passiva (SDD 4.8, criterios 20 e 21 da spec 007) ----------
 
 # hp inicial, minutos decorridos, hp esperado

@@ -171,114 +171,16 @@ describe('MontarTime', () => {
     })
   })
 
-  it('soltar um Pokemon do time pede confirmacao nomeando-o e encolhe o time (criterio 8 da spec 008)', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('nao oferece um botao de soltar dentro do time: isso acontece pelo viveiro, depois de tirar do time', async () => {
     const pikachu = pokemonResumoExemplo({ id: 'poke-pikachu', nome: 'Pikachu', nivel: 7 })
-    const detalheAntes = treinadorDetalheExemplo({ id: 'treinador-1', nome: 'Ash', time: [pikachu] })
-    const detalheDepois = treinadorDetalheExemplo({ id: 'treinador-1', nome: 'Ash', time: [] })
+    const detalhe = treinadorDetalheExemplo({ id: 'treinador-1', nome: 'Ash', time: [pikachu] })
 
-    let removido = false
-    const fetchMock = vi.fn((url: unknown, init?: RequestInit) => {
-      const caminho = String(url)
-      if (init?.method === 'DELETE') {
-        removido = true
-        return Promise.resolve(respostaJson(undefined, 204))
-      }
-      if (caminho.endsWith('/team/preview')) {
-        return Promise.resolve(respostaJson(previaTimeExemplo()))
-      }
-      if (caminho.includes('/pokemon?')) {
-        return Promise.resolve(
-          respostaJson(listaPokemonExemplo({ items: [], total: 0, page_size: 100 })),
-        )
-      }
-      if (/\/trainers\/[^/]+$/.test(caminho)) {
-        return Promise.resolve(respostaJson(removido ? detalheDepois : detalheAntes))
-      }
-      throw new Error(`Chamada inesperada no mock de fetch: ${caminho}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('fetch', montarFetchMock({ detalhe, livres: [] }))
 
     render(<MontarTime treinadorId="treinador-1" />)
 
     expect(await screen.findByText('Time atual (1 / 3)')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Soltar' }))
-
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Pikachu (Nv. 7)'))
-
-    await waitFor(() => expect(screen.getByText('Time atual (0 / 3)')).toBeInTheDocument())
-    expect(
-      fetchMock.mock.calls.some(
-        ([url, init]) => String(url).includes('poke-pikachu') && init?.method === 'DELETE',
-      ),
-    ).toBe(true)
-
-    confirmSpy.mockRestore()
-  })
-
-  it('cancelar a confirmacao de soltar nao chama o DELETE', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    const pikachu = pokemonResumoExemplo({ id: 'poke-pikachu', nome: 'Pikachu' })
-    const detalhe = treinadorDetalheExemplo({ id: 'treinador-1', nome: 'Ash', time: [pikachu] })
-
-    const fetchMock = montarFetchMock({ detalhe, livres: [] })
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(<MontarTime treinadorId="treinador-1" />)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Soltar' }))
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
-
-    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
-    expect(screen.getByText('Time atual (1 / 3)')).toBeInTheDocument()
-
-    confirmSpy.mockRestore()
-  })
-
-  it('recusa do servidor ao soltar mostra a mensagem dele, sem alterar o time', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const pikachu = pokemonResumoExemplo({ id: 'poke-pikachu', nome: 'Pikachu' })
-    const detalhe = treinadorDetalheExemplo({ id: 'treinador-1', nome: 'Ash', time: [pikachu] })
-
-    const fetchMock = vi.fn((url: unknown, init?: RequestInit) => {
-      const caminho = String(url)
-      if (init?.method === 'DELETE') {
-        return Promise.resolve(
-          respostaJson(
-            {
-              erro: {
-                codigo: 'ULTIMO_POKEMON',
-                mensagem: 'O laboratorio nao pode ficar sem nenhum Pokemon.',
-              },
-            },
-            409,
-          ),
-        )
-      }
-      if (caminho.endsWith('/team/preview')) {
-        return Promise.resolve(respostaJson(previaTimeExemplo()))
-      }
-      if (caminho.includes('/pokemon?')) {
-        return Promise.resolve(
-          respostaJson(listaPokemonExemplo({ items: [], total: 0, page_size: 100 })),
-        )
-      }
-      if (/\/trainers\/[^/]+$/.test(caminho)) {
-        return Promise.resolve(respostaJson(detalhe))
-      }
-      throw new Error(`Chamada inesperada no mock de fetch: ${caminho}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(<MontarTime treinadorId="treinador-1" />)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Soltar' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'O laboratorio nao pode ficar sem nenhum Pokemon.',
-    )
-    expect(screen.getByText('Time atual (1 / 3)')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /soltar/i })).not.toBeInTheDocument()
   })
 
   it('treinador ocupado mostra o motivo e nao oferece como alterar o time', async () => {
@@ -300,5 +202,84 @@ describe('MontarTime', () => {
     )
     expect(screen.queryByRole('button', { name: /salvar time/i })).not.toBeInTheDocument()
     expect(corposDe(fetchMock, '/team/preview')).toHaveLength(0)
+  })
+
+  describe('Pokemon retirado do time volta para a coluna de disponiveis', () => {
+    it('Pokemon retirado do time volta para a coluna de disponiveis', async () => {
+      // O defeito: a coluna de disponiveis vinha so de GET /pokemon?livre=true,
+      // que por definicao nao traz quem ja tem treinador. Ao tirar um Pokemon do
+      // time, ele sumia das duas colunas e nao havia como devolve-lo sem fechar
+      // e reabrir o painel.
+      const bulbasaur = pokemonResumoExemplo({ id: 'poke-bulba', nome: 'Bulbasaur' })
+      const detalhe = treinadorDetalheExemplo({ id: 'treinador-1', time: [bulbasaur] })
+
+      vi.stubGlobal('fetch', montarFetchMock({ detalhe, livres: [] }))
+      render(<MontarTime treinadorId="treinador-1" />)
+
+      const noTime = await screen.findByRole('button', { name: /Bulbasaur/i })
+      fireEvent.click(noTime)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Bulbasaur/i })).toBeInTheDocument()
+      })
+    })
+
+    it('com o laboratorio sem nenhum livre, o retirado ainda pode voltar', async () => {
+      // O caso mais apertado: laboratorio novo, os tres iniciais todos no time.
+      const time = [
+        pokemonResumoExemplo({ id: 'p1', nome: 'Bulbasaur' }),
+        pokemonResumoExemplo({ id: 'p2', nome: 'Charmander' }),
+        pokemonResumoExemplo({ id: 'p3', nome: 'Squirtle' }),
+      ]
+      const detalhe = treinadorDetalheExemplo({ id: 'treinador-1', time })
+
+      vi.stubGlobal('fetch', montarFetchMock({ detalhe, livres: [] }))
+      render(<MontarTime treinadorId="treinador-1" />)
+
+      fireEvent.click(await screen.findByRole('button', { name: /Charmander/i }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Charmander/i })).toBeInTheDocument()
+      })
+    })
+  })
+
+  it('avisa o pai quando ha alteracoes nao salvas', async () => {
+    // O aviso vive no pai porque o painel e remontado por key a cada troca de
+    // treinador: o confirm interno do botao Fechar nunca rodava nesse caminho.
+    const livre = pokemonResumoExemplo({ id: 'poke-livre', nome: 'Pikachu' })
+    const detalhe = treinadorDetalheExemplo({ id: 'treinador-1', time: [] })
+    const onPendenciasMudaram = vi.fn()
+
+    vi.stubGlobal('fetch', montarFetchMock({ detalhe, livres: [livre] }))
+    render(<MontarTime treinadorId="treinador-1" onPendenciasMudaram={onPendenciasMudaram} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /Pikachu/i }))
+
+    await waitFor(() => {
+      expect(onPendenciasMudaram).toHaveBeenCalledWith(true)
+    })
+  })
+
+  it('o tamanho maximo do time vem do servidor, nao de um literal', async () => {
+    const detalhe = treinadorDetalheExemplo({ id: 'treinador-1', tamanho_maximo_time: 4 })
+
+    vi.stubGlobal('fetch', montarFetchMock({ detalhe, livres: [] }))
+    render(<MontarTime treinadorId="treinador-1" />)
+
+    expect(await screen.findByText(/Time atual \(0 \/ 4\)/)).toBeInTheDocument()
+  })
+
+  it('treinador ocupado usa o campo do servidor, nao deduz do status', async () => {
+    // statusOcupado reimplementava o invariante 3 no cliente (Artigo II).
+    // Um status desconhecido pelo cliente mas marcado como ocupado pelo
+    // servidor tem que travar a edicao do mesmo jeito.
+    const detalhe = treinadorDetalheExemplo({ id: 'treinador-1', ocupado: true })
+
+    vi.stubGlobal('fetch', montarFetchMock({ detalhe, livres: [] }))
+    render(<MontarTime treinadorId="treinador-1" />)
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /salvar time/i })).not.toBeInTheDocument()
   })
 })

@@ -446,6 +446,101 @@ def test_senha_rejeitada_por_ser_curta_tambem_nao_pode_voltar_no_corpo_da_respos
     assert senha_curta_mas_sensivel not in resposta.text
 
 
+# --- Regressao da revisao da Fase 2: envelope do 422 ------------------------
+# CRITICO: nao havia handler de RequestValidationError, entao o 422 do
+# Pydantic ecoava o valor rejeitado no campo `input` -- a senha voltava no
+# corpo da resposta e dali para log de proxy, APM e devtools. Alem disso o
+# 422 escapava do envelope {"erro": {...}} e chegava ao professor como texto
+# de protocolo em ingles.
+
+
+@pytest.mark.parametrize(
+    ("caminho", "corpo", "senha"),
+    [
+        ("/auth/register", {"usuario": "professor_x", "senha": "curta12"}, "curta12"),
+        ("/auth/register", {"usuario": "professor_y", "senha": "a" * 200}, "a" * 200),
+        ("/auth/login", {"usuario": "professor_z", "senha": ""}, None),
+    ],
+)
+def test_erro_de_validacao_nunca_devolve_a_senha_enviada(caminho, corpo, senha):
+    resposta = client.post(caminho, json=corpo)
+    assert resposta.status_code == 422
+    texto = resposta.text
+    if senha:
+        assert senha not in texto
+    assert '"input"' not in texto
+
+
+def test_erro_de_validacao_sai_no_envelope_da_aplicacao():
+    resposta = client.post("/auth/register", json={"usuario": "ab", "senha": "senhavalida1"})
+    corpo = resposta.json()
+
+    assert resposta.status_code == 422
+    assert corpo["erro"]["codigo"] == "ENTRADA_INVALIDA"
+    assert corpo["erro"]["mensagem"]
+    assert "detail" not in corpo
+
+
+def test_erro_de_validacao_diz_qual_campo_falhou_sem_o_valor():
+    resposta = client.post("/auth/register", json={"usuario": "ok_assim", "senha": "curta"})
+    campos = resposta.json()["erro"]["detalhes"]["campos"]
+
+    assert any(campo["campo"] == "senha" for campo in campos)
+    assert all("input" not in campo for campo in campos)
+    # O contexto de um campo sensivel tambem nao volta: `ctx` carrega o limite,
+    # mas em outros validadores pode carregar o valor.
+    senha = next(campo for campo in campos if campo["campo"] == "senha")
+    assert "contexto" not in senha
+
+
+# --- Regressao da revisao da Fase 2: usuario so de espacos ------------------
+
+
+@pytest.mark.parametrize("usuario", ["   ", "\t\t\t", "    \n  "])
+def test_usuario_so_com_espacos_e_recusado(usuario, sessao_db):
+    resposta = client.post("/auth/register", json={"usuario": usuario, "senha": "senhavalida123"})
+    assert resposta.status_code == 422
+
+
+def test_espacos_nas_pontas_do_usuario_sao_aparados(sessao_db):
+    nome = "ComEspacosNasPontas"
+    resposta = client.post(
+        "/auth/register", json={"usuario": f"  {nome}  ", "senha": "senhavalida123"}
+    )
+    assert resposta.status_code == 201
+    assert resposta.json()["professor"]["usuario"] == nome
+
+
+# --- Regressao da revisao da Fase 2: limite_treinadores no perfil -----------
+# MEDIO: o invariante 5 do SDD pede o limite derivado do nivel, e nao havia
+# funcao, coluna nem campo de resposta que o calculasse.
+
+
+def test_me_informa_quantos_treinadores_o_laboratorio_comporta(sessao_db):
+    from app.game.laboratorio import limite_treinadores
+
+    registro = client.post(
+        "/auth/register", json={"usuario": "LimiteDeTreinadores", "senha": "senhavalida123"}
+    )
+    token = registro.json()["token"]
+
+    perfil = client.get("/me", headers={"Authorization": f"Bearer {token}"}).json()
+
+    assert perfil["laboratorio"]["limite_treinadores"] == limite_treinadores(1)
+    assert perfil["laboratorio"]["limite_treinadores"] == balance.LIMITE_TREINADORES_NIVEL_1
+
+
+def test_o_kit_inicial_nao_estoura_o_limite_do_laboratorio_novo(sessao_db):
+    registro = client.post(
+        "/auth/register", json={"usuario": "KitCabeNoLimite", "senha": "senhavalida123"}
+    )
+    token = registro.json()["token"]
+
+    perfil = client.get("/me", headers={"Authorization": f"Bearer {token}"}).json()
+
+    assert perfil["resumo"]["treinadores"] <= perfil["laboratorio"]["limite_treinadores"]
+
+
 # --- Item 5 da constituicao: atomicidade ------------------------------------
 
 

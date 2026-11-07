@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from app.core.erros import UsuarioEmUso
+from app.core.erros import KitJaConcedido, UsuarioEmUso
 from app.game import balance
 from app.models import (
     ItemEstoque,
@@ -179,3 +179,75 @@ def test_kit_e_concedido_uma_unica_vez_por_laboratorio(sessao_db):
         }
     )
     assert sessao_db.get(Laboratorio, laboratorio_id).starters_concedidos is True
+
+
+# --- Regressao da revisao da Fase 2: guarda de `_conceder_kit` em si --------
+# ALTO: `starters_concedidos` era escrito e nunca lido. Uma segunda concessao
+# sobre o MESMO laboratorio adicionava tres Pokemon e um treinador extras
+# antes de estourar na chave composta de item_estoques, com IntegrityError
+# vazando. Diferente do teste acima (que passa pelo `registrar()` publico
+# com um usuario duplicado), estes dois chamam `_conceder_kit` direto sobre
+# um laboratorio que ja tem o kit, provando que a guarda vive na propria
+# concessao, nao so na checagem de usuario em uso.
+
+
+def test_segunda_concessao_do_kit_e_recusada(sessao_db):
+    criada = auth_service.registrar(sessao_db, usuario="kit2x", senha="senhavalida123")
+    laboratorio = sessao_db.get(Laboratorio, criada.laboratorio.id)
+
+    with pytest.raises(KitJaConcedido):
+        auth_service._conceder_kit(sessao_db, laboratorio)
+    sessao_db.rollback()
+
+
+def test_segunda_concessao_nao_cria_pokemon_nem_treinador_extra(sessao_db):
+    criada = auth_service.registrar(sessao_db, usuario="kitextra", senha="senhavalida123")
+    laboratorio_id = criada.laboratorio.id
+
+    def contar(modelo) -> int:
+        return len(
+            sessao_db.scalars(select(modelo).where(modelo.laboratorio_id == laboratorio_id)).all()
+        )
+
+    antes = (contar(PokemonInstancia), contar(Treinador))
+
+    with pytest.raises(KitJaConcedido):
+        auth_service._conceder_kit(sessao_db, sessao_db.get(Laboratorio, laboratorio_id))
+    sessao_db.rollback()
+
+    assert (contar(PokemonInstancia), contar(Treinador)) == antes
+    assert antes == (len(balance.STARTER_SPECIES_IDS), balance.TREINADORES_NO_KIT_INICIAL)
+
+
+# --- Regressao da revisao da Fase 2: semente do kit fica gravada ------------
+# ALTO: o servico chamava random.Random() sem semente, contrariando o
+# Artigo III: o kit de um laboratorio existente nao podia ser remontado.
+
+
+def test_semente_do_kit_fica_gravada_no_laboratorio(sessao_db):
+    criada = auth_service.registrar(sessao_db, usuario="semente", senha="senhavalida123")
+    laboratorio = sessao_db.get(Laboratorio, criada.laboratorio.id)
+
+    assert laboratorio.semente_kit_inicial is not None
+    assert 0 <= laboratorio.semente_kit_inicial < auth_service.SEMENTE_MAXIMA
+
+
+def test_a_semente_gravada_remonta_o_mesmo_kit(sessao_db):
+    import random
+
+    from app.game.kit_inicial import EspecieInicial, montar_kit_inicial
+    from app.repositories import especies as especies_repo
+
+    criada = auth_service.registrar(sessao_db, usuario="remonta", senha="senhavalida123")
+    laboratorio = sessao_db.get(Laboratorio, criada.laboratorio.id)
+
+    especies = [
+        EspecieInicial(id=e.id, nome=e.nome, curva_crescimento=e.curva_crescimento)
+        for e in especies_repo.buscar_iniciais(sessao_db)
+    ]
+    remontado = montar_kit_inicial(especies, random.Random(laboratorio.semente_kit_inicial))
+
+    treinador_no_banco = sessao_db.scalars(
+        select(Treinador).where(Treinador.laboratorio_id == laboratorio.id)
+    ).first()
+    assert remontado.treinadores[0].nome == treinador_no_banco.nome

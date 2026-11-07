@@ -58,6 +58,10 @@ O estado de erro diz o que aconteceu e oferece repetir.
 | Relatorio de campo | log, resultado |
 | Despachar | enviar, iniciar |
 | Desbloqueado | liberado, aberto |
+| Estoque (itens do laboratorio) | mochila do laboratorio, inventario, bolsa |
+| Mochila (itens que o treinador leva) | carga, bolsa, suprimentos |
+
+Uma palavra, um significado: **Estoque** e o que o laboratorio guarda, **Mochila** e o que o treinador leva numa expedicao. Na tela nunca aparece "carga", embora o contrato da API e o codigo chamem a mochila do treinador exatamente assim — a divergencia esta registrada na questao 24 do SDD.
 
 Interface em portugues. Nomes de Pokemon, locais e itens em ingles: "Pikachu Nv.12 retornou de Viridian Forest".
 

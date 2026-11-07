@@ -81,7 +81,12 @@ preparar_banco_de_teste() {
 PREFIXO_CONTAINER="pokelab_teste"
 # Teto por execucao. A suite completa leva ~90s; cinco minutos e folga generosa
 # e ainda assim curto o bastante para uma trava nao virar problema de horas.
-TIMEOUT_TESTE_SEGUNDOS="${TIMEOUT_TESTE_SEGUNDOS:-300}"
+# Teto por container de teste. Os 300s iniciais foram calibrados quando a suite
+# levava 90; hoje leva 165 em maquina livre, e a margem caiu de 3x para menos de
+# 2x sem ninguem notar. Com a maquina disputada por agentes, a suite passou dos
+# 300 e foi derrubada — falso negativo que parece falha de teste. 600 devolve a
+# margem; se um dia a suite encostar nisso, o problema e a suite, nao o teto.
+TIMEOUT_TESTE_SEGUNDOS="${TIMEOUT_TESTE_SEGUNDOS:-600}"
 
 _containers_desta_execucao=()
 
@@ -97,6 +102,30 @@ trap limpar_containers EXIT INT TERM
 
 # Containers de execucoes anteriores que ficaram para tras. Roda antes de
 # comecar, porque e justamente o lixo antigo que segura o lock do banco.
+# Containers da imagem de teste que escaparam do prefixo.
+#
+# `limpar_orfaos` so alcanca quem nasceu com o nome PREFIXO_CONTAINER. Um agente
+# que monte `docker run --name outra_coisa` com a imagem de teste fica de fora, e
+# ja aconteceu: um laco arquivo-a-arquivo ficou vivo depois do workflow terminar,
+# disputando CPU e banco com a suite seguinte. O sintoma foi a suite levar 900s
+# em vez de 165 e ser derrubada pelo timeout — um falso negativo que parece
+# falha de teste.
+limpar_por_imagem() {
+  local imagem; imagem="$(imagem_de_teste 2>/dev/null)" || return 0
+  local id nome
+  for id in $(docker ps -q --filter "ancestor=$imagem" 2>/dev/null); do
+    nome="$(docker inspect -f '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')"
+    # Os desta execucao ja estao no trap; estes sao de outra, que terminou sem
+    # limpar. Comparar por NOME, nao por lista: lista vazia com `grep -v` casa
+    # com tudo e apagaria os proprios containers em uso.
+    case "$nome" in
+      "${PREFIXO_CONTAINER}"*) continue ;;
+    esac
+    info "removendo container de teste orfao: $nome" >&2
+    docker rm -f "$id" >/dev/null 2>&1 || true
+  done
+}
+
 limpar_orfaos() {
   local antigos
   antigos="$(docker ps -q --filter "name=^${PREFIXO_CONTAINER}" 2>/dev/null)"
@@ -224,6 +253,7 @@ build() {
 }
 
 limpar_orfaos
+limpar_por_imagem
 
 case "$ETAPA" in
   limpar) info "limpeza concluida"; exit 0 ;;

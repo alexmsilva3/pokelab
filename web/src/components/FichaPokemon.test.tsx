@@ -7,47 +7,49 @@ function respostaJson(corpo: unknown, status = 200) {
   return { ok: status < 400, status, json: async () => corpo }
 }
 
-describe('FichaPokemon — regressao da revisao da Fase 3', () => {
+describe('FichaPokemon', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('apelido igual ao nome da especie aparece no campo de edicao', async () => {
-    // A ficha deduzia "nao tem apelido" comparando nome com especie_nome.
-    // Quem apelidasse um Pidgey de "Pidgey" via o campo vazio, e o proximo
-    // salvar apagaria o apelido.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        respostaJson(
-          pokemonDetalheExemplo({
-            nome: 'Bulbasaur',
-            apelido: 'Bulbasaur',
-            especie_nome: 'Bulbasaur',
-          }),
+  describe('campo de apelido', () => {
+    it('apelido igual ao nome da especie aparece no campo de edicao', async () => {
+      // A ficha deduzia "nao tem apelido" comparando nome com especie_nome.
+      // Quem apelidasse um Pidgey de "Pidgey" via o campo vazio, e o proximo
+      // salvar apagaria o apelido.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          respostaJson(
+            pokemonDetalheExemplo({
+              nome: 'Bulbasaur',
+              apelido: 'Bulbasaur',
+              especie_nome: 'Bulbasaur',
+            }),
+          ),
         ),
-      ),
-    )
+      )
 
-    render(<FichaPokemon id="abc" onAtualizado={() => {}} />)
+      render(<FichaPokemon id="abc" onAtualizado={() => {}} />)
 
-    const campo = await screen.findByLabelText(/apelido/i)
-    expect(campo).toHaveValue('Bulbasaur')
-  })
+      const campo = await screen.findByLabelText(/apelido/i)
+      expect(campo).toHaveValue('Bulbasaur')
+    })
 
-  it('sem apelido o campo de edicao comeca vazio', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        respostaJson(
-          pokemonDetalheExemplo({ nome: 'Bulbasaur', apelido: null, especie_nome: 'Bulbasaur' }),
+    it('sem apelido o campo de edicao comeca vazio', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          respostaJson(
+            pokemonDetalheExemplo({ nome: 'Bulbasaur', apelido: null, especie_nome: 'Bulbasaur' }),
+          ),
         ),
-      ),
-    )
+      )
 
-    render(<FichaPokemon id="abc" onAtualizado={() => {}} />)
+      render(<FichaPokemon id="abc" onAtualizado={() => {}} />)
 
-    expect(await screen.findByLabelText(/apelido/i)).toHaveValue('')
+      expect(await screen.findByLabelText(/apelido/i)).toHaveValue('')
+    })
   })
 
   it('erro de gravacao nao sobrevive a troca de Pokemon', async () => {

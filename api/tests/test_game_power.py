@@ -138,6 +138,33 @@ def test_cada_nivel_de_treinador_muda_o_poder_do_time():
     assert poderes == sorted(poderes)
 
 
+# --- Regressao da revisao da Fase 4: o mesmo achado, em separado -------------
+# ALTO: poder_do_time devolvia inteiro, e o passo de 3% por nivel cabia
+# inteiro dentro do arredondamento em times pequenos: um Bulbasaur nivel 5
+# dava 8 com treinador de nivel 1, 2 ou 3. O criterio de aceite 9 era falso
+# na pratica. Estes tres nasceram separados (e depois o teste acima consolidou
+# as duas pontas); ficam aqui como os casos originais da revisao.
+
+
+def _bulbasaur_nivel_5() -> list[PokemonNoTime]:
+    return [PokemonNoTime(nivel=5, soma_stats_base=318, hp_atual_pct=100)]
+
+
+def test_niveis_de_treinador_adjacentes_nao_empatam_no_caso_mais_apertado():
+    poderes = [poder_do_time(_bulbasaur_nivel_5(), nivel) for nivel in range(1, 11)]
+    assert len(set(poderes)) == len(poderes), poderes
+
+
+def test_poder_cresce_monotonicamente_com_o_nivel_do_treinador():
+    poderes = [poder_do_time(_bulbasaur_nivel_5(), nivel) for nivel in range(1, 21)]
+    assert poderes == sorted(poderes)
+
+
+def test_poder_respeita_a_precisao_declarada_no_balance():
+    valor = poder_do_time(_bulbasaur_nivel_5(), 7)
+    assert round(valor, balance.CASAS_DECIMAIS_PODER) == valor
+
+
 def test_poder_e_deterministico():
     # Artigo III: mesma entrada, mesma saida, sempre. Sem ponto flutuante
     # acumulando erro, repetir a conta nao muda o resultado.

@@ -23,7 +23,7 @@ A referência de loop é o sistema de frotas de *No Man's Sky*: despachar, esper
 - Motor de expedição assíncrono com log narrativo de eventos.
 - Central de Entregas: pedidos gerados pelo jogo, pagos em moeda e experiência.
 - Pokédex com registro de onde cada espécie foi avistada.
-- Mochila simples: Pokébolas, Poções, Revives.
+- Estoque simples do laboratório: Pokébolas, Poções, Revives.
 - Nível de laboratório, alimentado por expedições e entregas.
 
 ### 1.2 O que a v1 não entrega (registrado para não virar escopo acidental)
@@ -45,6 +45,8 @@ Batalha interativa por turnos; troca entre jogadores; evolução por pedra/troca
 | **Desbloqueio** | Efeito de uma expedição bem-sucedida: o local vira ponto de partida válido para novas expedições. |
 | **Entrega** | Pedido gerado pelo jogo: levar uma quantidade de Pokémon específicos até uma cidade. Ocupa um treinador, paga moeda e experiência. |
 | **Bagagem** | Espaço do treinador para Pokémon capturados em campo. Time e bagagem somam no máximo 6. |
+| **Estoque** | Os itens guardados no laboratório. Sai no despacho, repõe-se com achados de campo. Nunca se diz "mochila do laboratório". |
+| **Mochila** | Os itens que o treinador leva numa expedição, escolhidos no despacho. No contrato da API e no código esse mesmo conjunto chama-se `carga` (questão 24). |
 | **Moeda** | Recurso ganho em entregas. Na v1 é placar e reserva para a loja de uma versão futura. |
 
 ---
@@ -645,7 +647,7 @@ Dez nós, uma ramificação precoce (Route 22 como armadilha de dificuldade) e p
 ### Fase 2 — Credenciais do Professor — CONCLUÍDA (2026-11-05)
 *Login, sessão e criação do laboratório.*
 
-Spec em [specs/002-credenciais-do-professor/](specs/002-credenciais-do-professor/). 218 testes de backend e 16 de frontend. Revisão adversarial em quatro lentes encontrou 20 defeitos, todos corrigidos e cobertos por regressão em `api/tests/test_correcoes_revisao.py`.
+Spec em [specs/002-credenciais-do-professor/](specs/002-credenciais-do-professor/). 218 testes de backend e 16 de frontend. Revisão adversarial em quatro lentes encontrou 20 defeitos, todos corrigidos e cobertos por regressão (realocada em 2026-11-07 do arquivo por fase para o arquivo temático de cada achado — `api/tests/test_auth.py`, `test_core_seguranca.py` e `test_kit_inicial_carga.py`).
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
@@ -676,7 +678,7 @@ Spec em [specs/003-o-laboratorio/](specs/003-o-laboratorio/). 815 testes de back
 | 3.5 | Tela Laboratório: cabeçalho com recursos, lista de Pokémon, estado vazio | `pokelab-frontend` | `pokelab-ui-kit` |
 | 3.6 | Painel de detalhe do Pokémon (sprite, tipos, stats, EXP até o próximo nível, origem) | `pokelab-frontend` | `pokelab-ui-kit` |
 | 3.7 | `GET /pokedex` e tela da Pokédex (151 slots, silhueta para não visto) | `pokelab-api` + `pokelab-frontend` | `pokelab-ui-kit` |
-| 3.8 | `GET /items` e painel de mochila | `pokelab-api` + `pokelab-frontend` | — |
+| 3.8 | `GET /items` e painel de Estoque do laboratório | `pokelab-api` + `pokelab-frontend` | — |
 
 **Pronto quando:** o professor vê, filtra e inspeciona seus Pokémon e sua Pokédex sem recarregar a página.
 
@@ -878,6 +880,7 @@ A forma exata dessas duas é parte do experimento, não premissa. O que não pod
 | 10.7 | **Revisão de escopo de evolução** (questão 17): decidir o destino das 100 espécies que não evoluem por nível — pedra, troca e amizade. Levantar quantas estão afetadas por grupo, o custo de cada mecânica e o impacto na Pokédex, e registrar a decisão em ADR | `pokelab-architect` | `pokelab-domain-rules` |
 | 10.8 | **Especificação da loja pós-v1** (questão 19): a moeda já acumula na v1 e vai comprar Poções, Pokébolas e treinadores. Levantar preços a partir dos dados de calibragem da Fase 9 e registrar em ADR, sem implementar | `pokelab-architect` | `pokelab-domain-rules` |
 | 10.9 | **Carga visível na expedição em curso**: o cartão mostra o destino, o tempo e nada do que o treinador levou. `ExpedicaoLer.carga` já vem no contrato com `quantidade_levada` e `quantidade_consumida` — é só desenhar. Importa porque a carga é metade da decisão do despacho e some de vista no instante em que ela passa a valer | `pokelab-frontend` | `pokelab-ui-kit` |
+| 10.10 | **`efeito_duracao` no `GET /items`**: o modificador de duração existe no seed (`data/seed/items.json`), na coluna `items.efeito_duracao` e no domínio (`ItemNaCarga`, `bonus_de_itens`), e **não** chega a `ItemEmEstoque`. Por isso a etapa "3. Mochila" do despacho não consegue dizer que uma Poção encurta a expedição — só que a prévia já reflete a escolha. Expor o campo na leitura e exibi-lo junto da descrição da categoria. Não é regra de jogo no cliente (Artigo II): o número vem do servidor e a duração continua sendo calculada por ele; a tela só mostra o dado | `pokelab-api` + `pokelab-frontend` | `pokelab-api-conventions` |
 
 **Pronto quando:** uma pessoa que nunca viu o projeto completa o loop sem instrução, e as decisões adiadas estão registradas em ADR.
 
@@ -1092,3 +1095,19 @@ Com `DIVISOR_QUANTIDADE_POR_CAPTURA = 85`: Rattata, Caterpie e Pidgey (taxa 255)
 18. ~~Piso de encontros achata metade do mapa.~~ **Resolvido 2026-11-05: desacoplado.** `encontros_base` por local no seed, e a duração passou a ser calculada pelo caminho (seções 4.4 e 4.5). Os números de travessia e de encontros foram escolhidos por estimativa e ainda não por simulação — a calibragem é da Fase 8, tarefa 8.3.
 16. **Avatar do treinador**: o ADR-002 cobre apenas sprites de Pokémon. Sugiro avatar gerado (iniciais sobre cor determinística pelo id do treinador) — zero asset, zero licença, e substituível depois sem migração.
 15. Idioma da interface: português apenas, ou nomes de Pokémon e locais em inglês com o restante em português? (Assumi a segunda opção, que é o padrão da comunidade.)
+
+24. **A tela diz "Mochila", o código diz `carga`** (divergência registrada em 2026-11-07, sem decisão). Desde a renomeação do painel de itens do laboratório para **Estoque**, o glossário (1.3) tem uma palavra por conceito: *Estoque* é o que o laboratório guarda, *Mochila* é o que o treinador leva. A etapa 3 do despacho passou a se chamar "3. Mochila". A cadeia técnica inteira continua em `carga`:
+
+| Onde | Nome hoje |
+|---|---|
+| Corpo de `POST /expeditions` e de `POST /expeditions/preview` | campo `carga` |
+| Schemas do backend | `ItemDaCargaEntrada`, `ItemDaCargaLer`, `ExpedicaoEntrada.carga`, `ExpedicaoResumoLer.carga` (`app/schemas/expedicoes.py`) |
+| Tipos do cliente | `ItemCargaEntrada`, `ItemCargaLer`, `ExpedicaoEntrada.carga`, `ExpedicaoResumo.carga` — e `ExpedicaoLer`, que a estende (`web/src/api/tipos.ts`) |
+| Domínio | `ItemNaCarga`, `bonus_de_itens(carga)` (`api/app/game/expedition.py`) |
+| CSS e ids da tela | `.despacho-carga`, `.despacho-carga-item`, `carga-${item_id}` |
+
+A divergência foi **deliberada**: renomear o contrato era mudança maior do que a rodada pedia, e tocaria schemas, tipos do cliente, domínio e os testes de uma fase já fechada. O risco de deixar como está é de compreensão, não de estado — quem lê "Mochila" na tela procura `mochila` no código e não encontra nada. É exatamente o tipo de armadilha que esta seção existe para desarmar.
+
+**Custo de alinhar**, se a decisão for renomear: o campo do corpo de duas rotas, que é **quebra de contrato** e obriga a aceitar os dois nomes por um período ou a versionar; os quatro tipos de linha de carga (`ItemDaCargaEntrada`/`ItemDaCargaLer` no backend, `ItemCargaEntrada`/`ItemCargaLer` no cliente) mais o campo `carga` nos schemas de expedição dos dois lados; `ItemNaCarga` e `bonus_de_itens` no domínio; quatro classes de CSS (`.despacho-carga` e as três `.despacho-carga-item*`) e o gerador de id `carga-${item_id}`; e os testes que citam `carga` em `api/tests/test_game_expedition.py` e em `web/src/components/DespacharExpedicao.test.tsx`. `ExpedicaoItem.quantidade_levada`/`quantidade_consumida` e as colunas do banco não têm "carga" no nome e não mudam. É tarefa de Fase 10 e nenhum ganho de comportamento — por isso é questão, não pendência.
+
+**Enquanto não se decide:** "Mochila" e `carga` são o mesmo conceito, e o glossário é a ponte. Nenhum texto de interface usa "carga" (`pokelab-ui-kit`); nenhum identificador de código usa `mochila`.

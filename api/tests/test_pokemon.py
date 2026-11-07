@@ -13,6 +13,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event
 
@@ -20,6 +21,7 @@ from app.core.database import engine
 from app.game import balance
 from app.main import app
 from app.models import PokemonInstancia
+from app.routers.pokemon import PAGE_MAXIMA
 from tests.conftest import requer_banco
 
 pytestmark = requer_banco
@@ -150,6 +152,39 @@ def test_pagina_acima_do_teto_e_cortada_e_as_paginas_cobrem_tudo_sem_duplicar(se
         page += 1
 
     assert len(vistos) == total, "a soma das paginas nao cobriu todo o acervo"
+
+
+# --- Criterio 2 (regressao da revisao da Fase 3): o teto do OFFSET do Postgres -
+# ALTO: (page - 1) * page_size passava de 2^63-1, o Postgres recusava o
+# OFFSET e a resposta era 500 em texto puro, fora do envelope da aplicacao.
+
+
+def test_pagina_absurda_e_recusada_sem_derrubar_o_servidor(sessao_db):
+    sessao = _registrar("Crit02_PaginaAbsurda")
+    resposta = client.get(
+        "/pokemon", params={"page": 4611686018427387904}, headers=_cabecalho(sessao)
+    )
+    assert resposta.status_code == 422
+    assert resposta.json()["erro"]["codigo"] == "ENTRADA_INVALIDA"
+
+
+def test_pagina_no_limite_maximo_ainda_responde(sessao_db):
+    sessao = _registrar("Crit02_PaginaNoTeto")
+    resposta = client.get("/pokemon", params={"page": PAGE_MAXIMA}, headers=_cabecalho(sessao))
+    assert resposta.status_code == 200
+    assert resposta.json()["items"] == []
+
+
+def test_pagina_alem_do_fim_devolve_lista_vazia_e_total_correto(sessao_db):
+    sessao = _registrar("Crit02_PaginaAlemDoFim")
+    resposta = client.get("/pokemon", params={"page": 99}, headers=_cabecalho(sessao))
+    corpo = resposta.json()
+
+    assert resposta.status_code == 200
+    assert corpo["items"] == []
+    # O total continua sendo o do acervo, para a interface saber que a pagina e
+    # que esta fora de faixa, e nao o filtro que nao achou nada.
+    assert corpo["total"] == len(balance.STARTER_SPECIES_IDS)
 
 
 # --- Criterio 3 ----------------------------------------------------------------
@@ -310,6 +345,61 @@ def test_apelido_com_mais_de_cinquenta_caracteres_e_recusado(sessao_db):
     assert resposta.status_code == 422
 
 
+# --- Criterio 7 (regressao da revisao da Fase 3): apelido cru ------------------
+# BAIXO: o cliente deduzia "tem apelido" comparando nome com especie. A
+# deducao errava quem apelidasse um Pidgey de "Pidgey": o campo aparecia
+# vazio e o proximo salvar apagaria o apelido.
+
+
+def test_a_ficha_devolve_o_apelido_cru_alem_do_nome_resolvido(sessao_db):
+    sessao = _registrar("Crit07_ApelidoCru")
+    primeiro = client.get("/pokemon", headers=_cabecalho(sessao)).json()["items"][0]
+
+    sem_apelido = client.get(f"/pokemon/{primeiro['id']}", headers=_cabecalho(sessao)).json()
+    assert sem_apelido["apelido"] is None
+    assert sem_apelido["nome"] == sem_apelido["especie_nome"]
+
+    especie = sem_apelido["especie_nome"]
+    client.patch(
+        f"/pokemon/{primeiro['id']}", json={"apelido": especie}, headers=_cabecalho(sessao)
+    )
+    com_apelido = client.get(f"/pokemon/{primeiro['id']}", headers=_cabecalho(sessao)).json()
+
+    # O caso que quebrava a deducao: apelido identico ao nome da especie.
+    assert com_apelido["apelido"] == especie
+    assert com_apelido["nome"] == especie
+
+
+def test_apelido_cru_volta_a_ser_nulo_quando_limpo(sessao_db):
+    sessao = _registrar("Crit07_ApelidoCruLimpo")
+    primeiro = client.get("/pokemon", headers=_cabecalho(sessao)).json()["items"][0]
+
+    client.patch(
+        f"/pokemon/{primeiro['id']}", json={"apelido": "Folhinha"}, headers=_cabecalho(sessao)
+    )
+    limpo = client.patch(
+        f"/pokemon/{primeiro['id']}", json={"apelido": None}, headers=_cabecalho(sessao)
+    ).json()
+
+    assert limpo["apelido"] is None
+    assert limpo["nome"] == limpo["especie_nome"]
+
+
+def test_apelido_cru_aparece_tambem_na_listagem(sessao_db):
+    sessao = _registrar("Crit07_ApelidoCruLista")
+    primeiro = client.get("/pokemon", headers=_cabecalho(sessao)).json()["items"][0]
+    assert "apelido" in primeiro
+
+    client.patch(
+        f"/pokemon/{primeiro['id']}", json={"apelido": "Folhinha"}, headers=_cabecalho(sessao)
+    )
+    lista = client.get("/pokemon", headers=_cabecalho(sessao)).json()["items"]
+    renomeado = next(item for item in lista if item["id"] == primeiro["id"])
+
+    assert renomeado["apelido"] == "Folhinha"
+    assert renomeado["nome"] == "Folhinha"
+
+
 # --- Criterio 10 ---------------------------------------------------------------
 
 
@@ -375,6 +465,27 @@ def test_filtro_de_tipo_desconhecido_e_recusado_em_vez_de_devolver_lista_vazia(s
     resposta = client.get("/pokemon", params={"tipo": "nao-existe"}, headers=_cabecalho(sessao))
 
     assert resposta.status_code == 422
+
+
+# --- MEDIO (regressao da revisao da Fase 3): nivel fora de faixa -----------
+# O nivel fora de faixa e recusado com envelope, nunca com 500.
+
+
+@pytest.mark.parametrize("parametros", [{"nivel_min": 0}, {"nivel_max": 0}, {"nivel_min": 101}])
+def test_nivel_fora_de_faixa_devolve_envelope_de_entrada_invalida(parametros, sessao_db):
+    sessao = _registrar("Crit04_NivelForaDeFaixa")
+    resposta = client.get("/pokemon", params=parametros, headers=_cabecalho(sessao))
+    assert resposta.status_code == 422
+    assert resposta.json()["erro"]["codigo"] == "ENTRADA_INVALIDA"
+
+
+def test_nivel_minimo_maior_que_maximo_devolve_lista_vazia_e_nao_erro(sessao_db):
+    sessao = _registrar("Crit04_NivelMinMaiorQueMax")
+    resposta = client.get(
+        "/pokemon", params={"nivel_min": 50, "nivel_max": 10}, headers=_cabecalho(sessao)
+    )
+    assert resposta.status_code == 200
+    assert resposta.json()["items"] == []
 
 
 def test_sem_token_devolve_401(sessao_db):

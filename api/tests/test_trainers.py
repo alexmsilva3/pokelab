@@ -145,6 +145,21 @@ def test_laboratorio_recem_criado_tem_treinadores_de_nivel_1_sem_pokemon_e_dispo
         assert treinador["avatar"]["iniciais"]
 
 
+# --- Criterio 1 (regressao da revisao da Fase 4): campos derivados -------------
+# Sem estes campos o cliente reimplementava o invariante 3 e o tamanho maximo
+# de time por conta propria, contra o Artigo II.
+
+
+def test_listagem_informa_ocupado_e_tamanho_maximo_prontos(sessao_db):
+    sessao = _registrar("CamposDerivados")
+    itens = _treinadores(sessao)
+
+    assert itens
+    for treinador in itens:
+        assert treinador["ocupado"] is False
+        assert treinador["tamanho_maximo_time"] == balance.TAMANHO_MAXIMO_TIME
+
+
 # --- Criterio 2 ----------------------------------------------------------------
 # Atribuir dois Pokemon livres: o time passa a ter os dois, e eles somem dos
 # livres.
@@ -208,6 +223,22 @@ def test_lista_acima_do_maximo_do_time_e_recusada_e_o_time_anterior_permanece(se
     assert resposta.status_code == 409
     assert resposta.json()["erro"]["codigo"] == "TIME_CHEIO"
     assert [p["id"] for p in _ficha(sessao, treinador_id)["time"]] == [primeiro]
+
+
+# --- Criterio 4 (regressao da revisao da Fase 4): lista absurda nao derruba ----
+# MEDIO: uma lista absurdamente grande travava linhas do banco antes de ser
+# recusada; a validacao barata de tamanho tem de vir ANTES de qualquer
+# consulta, e a API devolve 409, nunca 500.
+
+
+def test_pedido_absurdo_pela_api_devolve_conflito_e_nao_erro_interno(sessao_db):
+    sessao = _registrar("PedidoAbsurdo")
+    treinador_id = _treinadores(sessao)[0]["id"]
+
+    resposta = _definir_time(sessao, treinador_id, [str(uuid.uuid4()) for _ in range(500)])
+
+    assert resposta.status_code == 409
+    assert resposta.json()["erro"]["codigo"] == "TIME_CHEIO"
 
 
 # --- Criterio 5 ----------------------------------------------------------------
@@ -294,6 +325,22 @@ def test_poder_do_time_e_maior_para_o_treinador_de_nivel_maior(sessao_db):
     assert ficha_b["poder"] > ficha_a["poder"]
 
 
+# --- Criterio 9 (regressao da revisao da Fase 4): poder chega com decimal -----
+# Inteiro escondia o bonus do treinador em times pequenos (ver
+# test_game_power.py); este confere que o CLIENTE recebe o float, nao um
+# inteiro truncado.
+
+
+def test_poder_do_time_chega_ao_cliente_com_casa_decimal(sessao_db):
+    sessao = _registrar("PoderComCasaDecimal")
+    treinador_id = _treinadores(sessao)[0]["id"]
+    pokemon_id = _pokemon_livres(sessao)[0]["id"]
+
+    detalhe = _definir_time(sessao, treinador_id, [pokemon_id]).json()
+
+    assert isinstance(detalhe["poder"], float)
+
+
 # --- Criterio 10 ---------------------------------------------------------------
 # Identificador de treinador de outro professor: 404.
 
@@ -353,7 +400,7 @@ def test_time_definido_continua_o_mesmo_apos_recarregar_a_pagina(sessao_db):
 #
 # Dois treinadores DIFERENTES disputando o MESMO Pokemon livre: ao final, o
 # Pokemon pertence a exatamente um dos dois, e o outro PUT falhou com um erro
-# claro. Mesmo padrao de `test_correcoes_revisao.py`: threads reais, uma
+# claro. Mesmo padrao de `test_services_auth.py`: threads reais, uma
 # sessao de banco propria por thread, e uma barreira para garantir que os dois
 # comecem juntos — sem ela, o primeiro poderia terminar antes do segundo nem
 # comecar, e a corrida nunca aconteceria.

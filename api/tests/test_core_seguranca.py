@@ -1,4 +1,4 @@
-"""Hash de senha e token de sessao (spec 002, tarefa 5)."""
+"""Hash de senha, token de sessao e a guarda de producao (spec 002, tarefa 5)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 from jose import jwt
 
 from app.core import seguranca
-from app.core.config import get_settings
+from app.core.config import SECRET_KEYS_PUBLICAS, Settings, get_settings, validar_producao
 from app.core.erros import NaoAutenticado
 
 
@@ -81,3 +81,47 @@ def test_token_com_sub_que_nao_e_uuid_e_rejeitado():
     )
     with pytest.raises(NaoAutenticado):
         seguranca.validar_token(token_invalido)
+
+
+# --- CRITICO: a chave do .env.example passava pela guarda de producao ------
+# (regressao da revisao adversarial da Fase 2)
+# validar_producao so recusava a literal "desenvolvimento-apenas", mas um
+# deploy feito com `make setup` usa a chave do .env.example, que e publica.
+
+
+def _settings(**sobrescritas) -> Settings:
+    base = {
+        "environment": "production",
+        "secret_key": "x" * 48,
+        "postgres_user": "u",
+        "postgres_password": "p",
+        "postgres_db": "d",
+        "postgres_host": "h",
+    }
+    base.update(sobrescritas)
+    return Settings(_env_file=None, **base)
+
+
+@pytest.mark.parametrize("chave", sorted(SECRET_KEYS_PUBLICAS))
+def test_producao_recusa_qualquer_chave_publicada_no_repositorio(chave):
+    with pytest.raises(RuntimeError, match="publicado no repositorio"):
+        validar_producao(_settings(secret_key=chave))
+
+
+def test_chave_do_env_example_e_recusada_em_producao():
+    # A regressao exata: esta e a string distribuida em .env.example.
+    with pytest.raises(RuntimeError):
+        validar_producao(_settings(secret_key="trocar-em-producao-chave-longa-e-aleatoria"))
+
+
+def test_producao_recusa_chave_curta_demais():
+    with pytest.raises(RuntimeError, match="minimo em producao"):
+        validar_producao(_settings(secret_key="chave-propria-porem-curta"))
+
+
+def test_producao_aceita_chave_propria_e_longa():
+    validar_producao(_settings(secret_key="k" * 64))
+
+
+def test_desenvolvimento_nao_e_barrado_pela_guarda():
+    validar_producao(_settings(environment="development", secret_key="desenvolvimento-apenas"))

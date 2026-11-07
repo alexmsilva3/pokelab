@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -52,13 +52,22 @@ function renderMapa() {
 }
 
 /**
+ * A tela ganhou um mapa interativo acima da lista (ambos mostram o nome de
+ * cada local), entao toda consulta de cartao precisa ficar escopada a lista
+ * — senao casa tambem com o ponto homonimo do mapa.
+ */
+function obterListaLocais() {
+  return screen.getByRole('list', { name: 'Lista de locais' })
+}
+
+/**
  * O cartao cujo nome e exatamente `nome`, nao apenas um cartao cujo texto o
  * menciona de passagem — um local fora de alcance cita "Route 1" na frase
  * "Visite Route 1 antes.", e `getByRole` por nome acessivel casaria com os
  * dois.
  */
 function localizarCartao(nome: string) {
-  const botoes = screen.getAllByRole('button')
+  const botoes = within(obterListaLocais()).getAllByRole('button')
   const encontrado = botoes.find((botao) => within(botao).queryByText(nome) !== null)
   if (!encontrado) {
     throw new Error(`Nenhum cartao de local encontrado para "${nome}"`)
@@ -75,7 +84,9 @@ describe('Mapa', () => {
     vi.stubGlobal('fetch', criarFetchMock({ mapa: respostaMapaExemplo() }))
 
     renderMapa()
+    await screen.findByRole('heading', { name: 'Mapa de Kanto' })
 
+    const listaLocais = obterListaLocais()
     for (const nome of [
       'Pallet Town',
       'Route 1',
@@ -88,9 +99,41 @@ describe('Mapa', () => {
       'Route 22',
       'Cerulean City',
     ]) {
-      expect(await screen.findByText(nome)).toBeInTheDocument()
+      expect(within(listaLocais).getByText(nome)).toBeInTheDocument()
     }
-    expect(screen.getAllByRole('button')).toHaveLength(10)
+    expect(within(listaLocais).getAllByRole('button')).toHaveLength(10)
+  })
+
+  it('mostra tambem o mapa interativo, com cada local reconhecivel por nome e estado', async () => {
+    vi.stubGlobal('fetch', criarFetchMock({ mapa: respostaMapaExemplo() }))
+
+    renderMapa()
+    await screen.findByRole('heading', { name: 'Mapa de Kanto' })
+
+    const mapa = screen.getByRole('group', { name: 'Mapa de Kanto' })
+    expect(within(mapa).getByRole('button', { name: 'Pallet Town, visitado' })).toBeInTheDocument()
+    expect(
+      within(mapa).getByRole('button', { name: 'Route 1, alcancavel' }),
+    ).toBeInTheDocument()
+    expect(
+      within(mapa).getByRole('button', { name: 'Pewter City, fora de alcance' }),
+    ).toBeInTheDocument()
+  })
+
+  it('clicar num local no mapa destaca o mesmo local na lista, sem navegar', async () => {
+    vi.stubGlobal('fetch', criarFetchMock({ mapa: respostaMapaExemplo() }))
+
+    renderMapa()
+    await screen.findByRole('heading', { name: 'Mapa de Kanto' })
+
+    const mapa = screen.getByRole('group', { name: 'Mapa de Kanto' })
+    fireEvent.click(within(mapa).getByRole('button', { name: 'Route 1, alcancavel' }))
+
+    await waitFor(() => {
+      expect(localizarCartao('Route 1')).toHaveAttribute('aria-pressed', 'true')
+    })
+    // Clicar no mapa so destaca na lista: continua na mesma tela.
+    expect(screen.getByRole('heading', { name: 'Mapa de Kanto' })).toBeInTheDocument()
   })
 
   it('mostra o estado de cada local: visitado, alcancavel ou fora de alcance', async () => {
@@ -98,7 +141,7 @@ describe('Mapa', () => {
 
     renderMapa()
 
-    await screen.findByText('Pallet Town')
+    await screen.findByRole('heading', { name: 'Mapa de Kanto' })
 
     expect(screen.getAllByText('Visitado')).toHaveLength(1)
     expect(screen.getAllByText('Alcancavel')).toHaveLength(1)
@@ -118,9 +161,9 @@ describe('Mapa', () => {
     vi.stubGlobal('fetch', criarFetchMock({ mapa: { ...resposta, items: ordemDoServidor } }))
 
     renderMapa()
-    await screen.findByText('Pallet Town')
+    await screen.findByRole('heading', { name: 'Mapa de Kanto' })
 
-    const botoes = screen.getAllByRole('button')
+    const botoes = within(obterListaLocais()).getAllByRole('button')
     expect(botoes).toHaveLength(ordemDoServidor.length)
 
     function indiceDoLocal(nome: string) {
@@ -136,7 +179,7 @@ describe('Mapa', () => {
     vi.stubGlobal('fetch', criarFetchMock({ mapa: respostaMapaExemplo() }))
 
     renderMapa()
-    await screen.findByText('Pewter City')
+    await screen.findByRole('heading', { name: 'Mapa de Kanto' })
 
     const cartaoPewter = localizarCartao('Pewter City')
     expect(within(cartaoPewter).getByText('Visite Route 1 antes.')).toBeInTheDocument()
@@ -158,7 +201,7 @@ describe('Mapa', () => {
     )
 
     renderMapa()
-    await screen.findByText('Pallet Town')
+    await screen.findByRole('heading', { name: 'Mapa de Kanto' })
 
     fireEvent.click(localizarCartao('Route 1'))
 
@@ -190,7 +233,7 @@ describe('Mapa', () => {
     )
 
     renderMapa()
-    await screen.findByText('Pallet Town')
+    await screen.findByRole('heading', { name: 'Mapa de Kanto' })
 
     fireEvent.click(localizarCartao('Pallet Town'))
 

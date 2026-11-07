@@ -161,7 +161,8 @@ button:disabled {
 /* --- Acervo (spec 003) --------------------------------------------- */
 
 .secao-acervo,
-.secao-mochila {
+.secao-estoque,
+.secao-expedicoes-ativas {
   margin-top: var(--espaco-5);
 }
 
@@ -340,13 +341,13 @@ button:disabled {
   color: var(--cor-texto-suave);
 }
 
-.mochila {
+.estoque {
   display: flex;
   flex-wrap: wrap;
   gap: var(--espaco-4);
 }
 
-.mochila-categoria ul {
+.estoque-categoria ul {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -355,7 +356,7 @@ button:disabled {
   gap: var(--espaco-1);
 }
 
-.mochila-categoria li {
+.estoque-categoria li {
   display: flex;
   justify-content: space-between;
   gap: var(--espaco-3);
@@ -632,6 +633,134 @@ button:disabled {
   color: var(--cor-texto-suave);
 }
 
+.mapa-kanto-secao {
+  margin-top: var(--espaco-4);
+}
+
+.mapa-kanto {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mapa-aresta {
+  stroke: var(--cor-borda);
+  stroke-width: 0.6;
+}
+
+.mapa-local {
+  cursor: pointer;
+}
+
+.mapa-local[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+/* O foco do teclado nao pode depender so da cor da borda do marcador: o
+   contorno aparece inteiro ao redor do grupo. */
+.mapa-local:focus-visible {
+  outline: 2px solid var(--cor-acento);
+  outline-offset: 1px;
+}
+
+.mapa-local-marcador--desbloqueado {
+  fill: var(--cor-sucesso);
+  stroke: var(--cor-sucesso);
+  stroke-width: 1;
+}
+
+.mapa-local-marcador--alcancavel {
+  fill: var(--cor-superficie);
+  stroke: var(--cor-acento);
+  stroke-width: 1.4;
+  stroke-dasharray: 2 1.2;
+}
+
+.mapa-local-marcador--fora-de-alcance {
+  fill: none;
+  stroke: var(--cor-texto-suave);
+  stroke-width: 0.7;
+  stroke-dasharray: 0.8 1;
+  opacity: 0.8;
+}
+
+/* Alvo de clique/toque invisivel por tras de todo marcador (os quatro
+   estados), maior que qualquer um deles. Sem isso, um marcador com
+   `fill: none` (o caso acima) so aciona o clique em cima do proprio traco:
+   pointer-events padrao do SVG e visiblePainted, e area sem preenchimento e
+   transparente ao ponteiro. `fill: transparent` (nunca `none`) e o que conta
+   como "pintado" para fins de clique, mesmo sem aparecer. */
+.mapa-local-alvo {
+  fill: transparent;
+}
+
+.mapa-local-marcador--selecionado {
+  fill: var(--cor-acento);
+  stroke: var(--cor-acento-texto);
+  stroke-width: 1.2;
+}
+
+.mapa-local-marcador-anel {
+  fill: none;
+  stroke: var(--cor-acento);
+  stroke-width: 0.8;
+}
+
+.mapa-local-rotulo {
+  fill: var(--cor-texto);
+  font-size: 3.4px;
+  font-family: var(--fonte);
+}
+
+/* Aviso de divergencia entre o que o servidor mandou e o que a tabela de
+   desenho do mapa conhece (MapaKanto.tsx, COORDENADAS) — nunca deveria
+   aparecer num laboratorio saudavel. Usa --cor-alerta para nao se confundir
+   com --cor-erro (acao que falhou): aqui a acao do professor nao falhou, o
+   desenho que ficou incompleto. */
+.mapa-aviso-desenho {
+  margin-top: var(--espaco-2);
+  padding: var(--espaco-2) var(--espaco-3);
+  border: 1px solid var(--cor-alerta);
+  border-radius: var(--raio);
+  color: var(--cor-alerta);
+}
+
+/* Dica mobile: so aparece em telas estreitas, explicando que os nomes
+   completos moram na lista de locais, nunca no proprio desenho. Ver
+   .mapa-local-rotulo abaixo para o motivo. */
+.mapa-kanto-dica-mobile {
+  display: none;
+}
+
+/* Rotulo some em telas estreitas: o nome em ingles ("Viridian City") nao cabe
+   ao lado dos vizinhos no grid apertado do celular. O nome completo continua
+   no rotulo acessivel (aria-label) do local sempre — so o desenho que fica
+   mais limpo.
+   O hover/foco abaixo ainda ajuda quem usa mouse numa janela estreita (o
+   hover existe antes do clique nesse caso), mas em tela de toque nao ha
+   hover e o foco so chega DEPOIS que o professor ja tocou — entao, so para
+   nao deixar o celular com dez bolinhas sem nome nenhum ANTES da escolha,
+   `.mapa-kanto-dica-mobile` acima aparece sempre nessa largura, apontando
+   para a lista de locais (que ja e, e continua sendo, a interface real de
+   escolha no celular — o mapa e ilustracao). */
+@media (max-width: 480px) {
+  .mapa-kanto-dica-mobile {
+    display: block;
+    margin-bottom: var(--espaco-2);
+    color: var(--cor-texto-suave);
+    font-size: 0.85rem;
+  }
+
+  .mapa-local-rotulo {
+    display: none;
+  }
+
+  .mapa-local:focus .mapa-local-rotulo,
+  .mapa-local:hover .mapa-local-rotulo {
+    display: block;
+  }
+}
+
 .detalhe-local {
   position: sticky;
   top: var(--espaco-3);
@@ -736,15 +865,27 @@ button:disabled {
   padding: var(--espaco-4);
 }
 
-.despacho-opcoes {
-  border: none;
-  padding: 0;
-  margin: var(--espaco-3) 0;
+/* Cada etapa do despacho (treinador, destino, mochila) e um bloco com peso
+   proprio, separado por borda e superficie visivelmente diferente das
+   outras duas: o professor precisa distinguir as tres de relance, nao so
+   rolar uma lista continua de campos. Sem animacao (interface lista-e-botao):
+   a separacao e so borda, raio e espaco, estaticos. */
+.despacho-etapa {
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  padding: var(--espaco-4);
+  margin: 0 0 var(--espaco-4) 0;
+  background: var(--cor-fundo);
 }
 
-.despacho-opcoes legend {
+.despacho-etapa:last-of-type {
+  margin-bottom: 0;
+}
+
+.despacho-etapa legend {
   font-weight: 600;
-  padding: 0;
+  font-size: 1.05rem;
+  padding: 0 var(--espaco-2);
   margin-bottom: var(--espaco-2);
 }
 
@@ -762,6 +903,52 @@ button:disabled {
   flex-direction: column;
   gap: var(--espaco-1);
   max-width: 220px;
+}
+
+/* Icone do treinador e do time no botao de escolha, para tornar a escolha
+   mais rapida de reconhecer do que so o nome e o nivel em texto. */
+.despacho-treinador-botao {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--espaco-1);
+  width: 100%;
+}
+
+/* `display: contents` tira o <span> decorativo do fluxo de layout: o
+   retrato e o nome participam do flex do botao como se o <span> nem
+   existisse. O papel dele e so marcar aria-hidden, nunca desenhar nada. */
+.despacho-treinador-decorativo {
+  display: contents;
+}
+
+.despacho-treinador-nome {
+  font-weight: 600;
+}
+
+.despacho-treinador-time {
+  display: flex;
+  gap: var(--espaco-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.despacho-treinador-time-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.despacho-treinador-time-nivel {
+  font-size: 0.75rem;
+  color: var(--cor-texto-suave);
+}
+
+.despacho-destino-escolhido {
+  margin: var(--espaco-2) 0 0 0;
+  font-size: 0.9rem;
 }
 
 /* O estado selecionado ja viajava em aria-pressed — leitor de tela anunciava,
@@ -807,7 +994,19 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: var(--espaco-2);
-  max-width: 320px;
+  max-width: 480px;
+}
+
+.despacho-carga-item-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.despacho-carga-item-descricao {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
 }
 
 .despacho-carga-item input {

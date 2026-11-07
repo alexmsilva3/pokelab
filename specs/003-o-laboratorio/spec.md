@@ -14,7 +14,7 @@ Clicando num deles, vê a ficha: a imagem grande, os tipos, os atributos já cal
 
 A Pokédex mostra as 151 espécies em ordem. As que o laboratório já capturou aparecem normalmente; as que algum treinador apenas avistou aparecem com a imagem, mas marcadas como não capturadas; as que ninguém nunca viu aparecem como silhueta, sem nome.
 
-A mochila mostra o que há em estoque, agrupado por categoria.
+O estoque mostra os itens guardados no laboratório, agrupados por categoria. "Estoque" é o do laboratório; o que o treinador leva numa expedição é a mochila dele, e é assunto da Fase 6.
 
 ## Regras
 
@@ -28,7 +28,7 @@ A mochila mostra o que há em estoque, agrupado por categoria.
 8. A Pokédex sempre lista as 151 espécies, qualquer que seja o progresso.
 9. Uma espécie nunca vista não revela nome nem tipo — apenas o número e a silhueta.
 10. Uma espécie avistada mas não capturada revela nome, tipo e imagem, e é marcada como não capturada.
-11. A mochila não mostra item com quantidade zero.
+11. O estoque não mostra item com quantidade zero.
 12. As imagens vêm do acervo local, sem nenhuma requisição a serviço externo.
 13. Pedir um Pokémon que não existe, ou que é de outro professor, responde como se não existisse.
 
@@ -44,7 +44,7 @@ A mochila mostra o que há em estoque, agrupado por categoria.
 8. Dada a Pokédex de um laboratório recém-criado, quando aberta, então tem 151 entradas, três marcadas como capturadas e as demais como desconhecidas.
 9. Dada uma espécie nunca vista, quando exibida na Pokédex, então seu nome não aparece em lugar nenhum da resposta nem da tela.
 10. Dado o identificador de um Pokémon de outro professor, quando requisitado, então a resposta é 404.
-11. Dada a mochila de um laboratório recém-criado, quando aberta, então mostra os itens do kit e nenhum item zerado.
+11. Dado o estoque de um laboratório recém-criado, quando aberto, então mostra os itens do kit e nenhum item zerado.
 12. Dada qualquer imagem exibida, quando se inspeciona a origem, então ela vem do próprio servidor.
 
 ## Fora de escopo

@@ -6,6 +6,7 @@ import { listarTreinadores } from '@/api/trainers'
 import type { LocalDetalhado, RespostaMapa, TreinadorResumo } from '@/api/tipos'
 import { CartaoLocal } from '@/components/CartaoLocal'
 import { EspeciesAvistadas } from '@/components/EspeciesAvistadas'
+import { MapaKanto } from '@/components/MapaKanto'
 import { rotuloEstadoLocal, rotuloTipoLocal } from '@/lib/mapa'
 
 type EstadoLista =
@@ -131,8 +132,17 @@ export function Mapa() {
         {resposta.visitados} de {resposta.total} locais visitados
       </p>
 
+      <section aria-label="Mapa interativo" className="mapa-kanto-secao">
+        <MapaKanto
+          locais={locaisOrdenados}
+          modo="leitura"
+          selecionadoId={selecionadoId}
+          onSelecionarLocal={selecionar}
+        />
+      </section>
+
       <div className="mapa-layout">
-        <ul className="lista-locais-grade">
+        <ul className="lista-locais-grade" aria-label="Lista de locais">
           {locaisOrdenados.map((local) => (
             <li key={local.id}>
               <CartaoLocal

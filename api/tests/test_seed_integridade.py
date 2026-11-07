@@ -374,7 +374,8 @@ def test_toda_classe_do_catalogo_tem_sprite_no_acervo():
     acervo = RAIZ / "data" / "sprites" / "treinadores"
 
     faltando = [
-        classe for classe in trainers_dominio.CLASSES_DE_TREINADOR
+        classe
+        for classe in trainers_dominio.CLASSES_DE_TREINADOR
         if not (acervo / f"{classe}.png").is_file()
     ]
 

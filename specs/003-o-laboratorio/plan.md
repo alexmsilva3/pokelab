@@ -36,6 +36,8 @@ GET /items
     200 -> {items: [ItemEmEstoque]}   agrupavel por categoria no cliente
 ```
 
+`ItemEmEstoque` tem `item_id`, `nome`, `categoria`, `potencia` e `quantidade`. **Não traz `efeito_duracao`**, que existe no seed e no domínio (SDD 3.1 e 4.4) e é o que faz uma Poção encurtar a expedição. Para esta fase o campo não faz falta — o painel é inventário, não decisão —, mas a Fase 6 herda a lacuna: a etapa da mochila no despacho não consegue dizer qual item acelera a viagem. Expor o campo é a tarefa 10.10 do SDD.
+
 `tipo` aceita um dos dezoito tipos e casa com primário **ou** secundário. `atribuido` é um booleano de três estados: ausente não filtra, `true` traz só os que estão com treinador, `false` só os que estão no laboratório.
 
 `page_size` tem teto de 100. Pedido acima disso é cortado em silêncio, não recusado — é limite de proteção, não regra de negócio.
@@ -69,7 +71,7 @@ components/ListaPokemon.tsx
 components/CartaoPokemon.tsx
 components/FichaPokemon.tsx   painel lateral de detalhe
 components/FiltrosPokemon.tsx
-components/Mochila.tsx
+components/Estoque.tsx        itens do laboratorio, agrupados por categoria
 components/SpritePokemon.tsx  img + silhueta + alt correto
 api/pokemon.ts, api/pokedex.ts, api/itens.ts
 ```

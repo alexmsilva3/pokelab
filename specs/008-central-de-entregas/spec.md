@@ -16,6 +16,8 @@ Uma expedição volta com o que o treinador conseguiu carregar, caiba ou não. O
 
 Para voltar a despachar, ele solta ou entrega até caber. Soltar devolve o Pokémon à natureza e não rende nada; é a saída rápida e cara em outro sentido.
 
+Na interface, soltar é sempre uma ação do viveiro. Um Pokémon que está num time não aparece lá com um botão de soltar ao lado: para soltá-lo, o professor primeiro o tira do time — ele cai no viveiro — e de lá, se for o caso, o solta. Montar time é composição, reversível a qualquer momento; soltar é destruição definitiva. Misturar os dois no mesmo lugar põe uma ação irreversível ao lado de uma reversível, e o caminho de dois passos já existe sem precisar de atalho.
+
 Na Central há sempre três pedidos. Cada um quer de uma a três espécies, em quantidade, entregues numa cidade aberta. O que é pedido depende do nível do laboratório: um laboratório jovem recebe encomendas de Pokémon comuns, um laboratório adiantado recebe encomendas difíceis — inclusive de espécies que o professor nunca viu, que é o jogo dizendo que existe algo lá fora e vale ir buscar.
 
 Cada pedido tem prazo. Vencido sem aceite, sai de circulação e dá lugar a outro — repor o que venceu não custa espera. Descartar a lista inteira por não gostar dela, sim: isso espera quinze minutos.
@@ -60,7 +62,7 @@ Ao aceitar, o professor escolhe **quais** Pokémon manda, entre os que atendem a
 5. Dado o viveiro acima da capacidade, quando se reclama um relatório, se aceita uma entrega ou se solta um Pokémon, então a operação funciona.
 6. Dado um Pokémon no viveiro, quando o professor o solta, então ele some e a ocupação cai em um.
 7. Dado um Pokémon solto, quando se consulta o saldo e o estoque, então nada mudou.
-8. Dado um Pokémon no time de um treinador disponível, quando o professor o solta, então o time encolhe.
+8. Dado um Pokémon no time de um treinador disponível, quando o professor o solta, então o time encolhe. Na interface esse critério se cumpre em dois passos: tirar o Pokémon do time (ele cai no viveiro) e, de lá, soltá-lo — o backend continua aceitando `DELETE /pokemon/{id}` com o Pokémon ainda em time, mas a tela não oferece esse atalho.
 9. Dado um Pokémon em expedição, quando se tenta soltá-lo, então a operação é recusada.
 10. Dado um Pokémon comprometido com entrega, quando se tenta soltá-lo, então a operação é recusada.
 11. Dado um laboratório com um único Pokémon, quando se tenta soltá-lo, então a operação é recusada.

@@ -8,7 +8,7 @@ import { FiltrosPokemon } from '@/components/FiltrosPokemon'
  * 0, o servidor recusa com 422, e o acervo inteiro sumia atras de uma mensagem
  * de erro por causa de uma tecla.
  */
-describe('FiltrosPokemon — regressao da revisao da Fase 3', () => {
+describe('FiltrosPokemon — validacao dos campos de nivel', () => {
   function renderFiltros(valores: ValoresFiltroPokemon = {}, onMudar = vi.fn()) {
     render(<FiltrosPokemon valores={valores} onMudar={onMudar} />)
     return onMudar

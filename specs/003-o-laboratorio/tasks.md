@@ -13,6 +13,6 @@
 | 9 | Lista, filtros e cartões no laboratório | pokelab-frontend | critérios 1 a 4 |
 | 10 | Ficha lateral com stats, EXP e origem | pokelab-frontend | critérios 5 a 7 |
 | 11 | Tela da Pokédex com as três aparências | pokelab-frontend | critérios 8 e 9 |
-| 12 | Painel de mochila | pokelab-frontend | critério 11 |
+| 12 | Painel de Estoque do laboratório | pokelab-frontend | critério 11 |
 | 13 | Testes de backend dos doze critérios | pokelab-test | `make test-db` verde |
 | 14 | Testes de frontend das telas novas | pokelab-test | `npm run test` verde |

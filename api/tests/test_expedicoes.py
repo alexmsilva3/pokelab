@@ -7,7 +7,7 @@ de `services/expedicoes.py` nem de `repositories/expedicoes.py` (Artigo IX): o
 que conta e o que a spec promete ao professor, e por isso os testes passam
 pela API HTTP de ponta a ponta, como o cliente a usa — exceto a concorrencia,
 que chama o servico direto com uma sessao de banco por thread, mesmo padrao de
-`test_trainers.py` e `test_correcoes_revisao.py`, porque compartilhar um unico
+`test_trainers.py` e `test_services_auth.py`, porque compartilhar um unico
 `TestClient` entre threads nao e a garantia que esta suite quer testar.
 
 O determinismo de `game/expedition.py` (duas chamadas com o mesmo `agora` e o
@@ -29,7 +29,7 @@ from sqlalchemy import event, select
 from app.core.config import Settings
 from app.core.database import SessionLocal, engine
 from app.core.erros import ConflitoDeExpedicao
-from app.game import balance
+from app.game import balance, expedition
 from app.main import app
 from app.models import Expedicao, ItemEstoque
 from app.repositories.expedicoes import LIMITE_MAXIMO, LIMITE_PADRAO
@@ -392,6 +392,55 @@ def test_expedicao_com_tempo_esgotado_aparece_aguardando_relatorio(sessao_db):
     assert resposta["segundos_restantes"] == 0
 
 
+# --- Criterio 11 (regressao da revisao da Fase 6): filtro usa o estado observado
+# CRITICO: a expedicao sumia da tela no instante em que terminava. O cliente
+# pedia ?status=EM_CURSO acreditando filtrar a coluna gravada; o servidor
+# filtra o estado OBSERVADO. Vencido o eta, a expedicao deixava de ser
+# EM_CURSO observado e desaparecia -- justamente quando o professor mais quer
+# olhar para ela.
+
+
+def test_expedicao_vencida_sai_do_filtro_de_em_curso(sessao_db):
+    sessao = _registrar("Fase6FiltroVencida")
+    treinador_id = _treinador_pronto(sessao)
+    expedicao_id = _despachar(sessao, treinador_id).json()["id"]
+    _forjar_eta_passado(sessao_db, expedicao_id)
+
+    em_curso = _listar(sessao, "EM_CURSO").json()
+    assert [i["id"] for i in em_curso["items"]] == []
+
+
+def test_filtro_aceita_varios_estados_e_mantem_a_vencida_visivel(sessao_db):
+    sessao = _registrar("Fase6FiltroVarios")
+    treinador_id = _treinador_pronto(sessao)
+    expedicao_id = _despachar(sessao, treinador_id).json()["id"]
+    _forjar_eta_passado(sessao_db, expedicao_id)
+
+    resposta = client.get(
+        "/expeditions",
+        params=[("status", "EM_CURSO"), ("status", "AGUARDANDO_RELATORIO")],
+        headers=_cabecalho(sessao),
+    ).json()
+
+    assert expedicao_id in [i["id"] for i in resposta["items"]]
+    item = next(i for i in resposta["items"] if i["id"] == expedicao_id)
+    assert item["estado_observado"] == "AGUARDANDO_RELATORIO"
+
+
+def test_a_coluna_gravada_continua_em_curso_depois_do_prazo(sessao_db):
+    # O estado e derivado, nao gravado: nenhuma escrita aconteceu no banco.
+    sessao = _registrar("Fase6ColunaGravada")
+    treinador_id = _treinador_pronto(sessao)
+    expedicao_id = _despachar(sessao, treinador_id).json()["id"]
+    _forjar_eta_passado(sessao_db, expedicao_id)
+
+    _obter(sessao, expedicao_id)
+
+    sessao_db.expire_all()
+    gravado = sessao_db.get(Expedicao, uuid.UUID(expedicao_id)).status
+    assert gravado == expedition.StatusExpedicao.EM_CURSO
+
+
 # --- Criterio 12 ---------------------------------------------------------------
 # Abortar: o treinador fica disponivel na hora, e os itens levados nao voltam.
 
@@ -431,6 +480,35 @@ def test_abortar_uma_expedicao_que_ja_terminou_e_recusado(sessao_db):
     assert resposta.json()["erro"]["codigo"] == "EXPEDICAO_NAO_ESTA_EM_CURSO"
 
 
+# --- Criterio 12 (regressao da revisao da Fase 6): tempo de uma viagem abortada
+# BAIXO: uma viagem que nao vai mais acontecer nao tem tempo restante para
+# informar. O tipo do cliente declarava os cinco campos da previa como
+# obrigatorios, e a tela desenhava "Chance estimada: 0%" ao lado do motivo da
+# recusa -- o mesmo raciocinio vale para `segundos_restantes` de uma
+# expedicao abortada.
+
+
+def test_expedicao_abortada_nao_informa_tempo_restante(sessao_db):
+    sessao = _registrar("Fase6AbortadaSemTempo")
+    treinador_id = _treinador_pronto(sessao)
+    expedicao_id = _despachar(sessao, treinador_id).json()["id"]
+    abortada = _abortar(sessao, expedicao_id).json()
+
+    assert abortada["estado_observado"] == "ABORTADA"
+    assert abortada["segundos_restantes"] is None
+
+
+def test_expedicao_em_curso_continua_informando_tempo_restante(sessao_db):
+    sessao = _registrar("Fase6EmCursoComTempo")
+    treinador_id = _treinador_pronto(sessao)
+    _despachar(sessao, treinador_id)
+
+    ativa = _listar(sessao, "EM_CURSO").json()["items"][0]
+
+    assert isinstance(ativa["segundos_restantes"], int)
+    assert ativa["segundos_restantes"] >= 0
+
+
 # --- Criterio 13 ---------------------------------------------------------------
 # Expedicao de outro professor: 404.
 
@@ -451,7 +529,7 @@ def test_expedicao_de_outro_professor_devolve_404(sessao_db):
 #
 # Despachada duas vezes em paralelo com o mesmo treinador: so uma e criada.
 # Threads reais com barreira, sessao de banco propria por thread — mesmo
-# padrao de `test_trainers.py` e `test_correcoes_revisao.py`.
+# padrao de `test_trainers.py` e `test_services_auth.py`.
 
 
 def test_despachar_duas_vezes_em_paralelo_com_o_mesmo_treinador_cria_so_uma_expedicao(sessao_db):
@@ -716,6 +794,32 @@ def test_previa_e_despacho_concordam_no_veredito(sessao_db, monkeypatch, montar_
         assert despacho.status_code == 409
         assert previa.json()["codigo"] == codigo_esperado
         assert despacho.json()["erro"]["codigo"] == codigo_esperado
+
+
+# --- Alem dos catorze, item 8b (regressao da revisao da Fase 6) ----------------
+# ALTO: a previa recusada devolvia nulos, nao zeros. O tipo do cliente
+# declarava os cinco campos como obrigatorios, e a tela desenhava "Chance
+# estimada: 0%" ao lado do motivo da recusa.
+
+
+def test_previa_recusada_devolve_nulo_em_todo_campo_numerico(sessao_db):
+    sessao = _registrar("PreviaRecusadaComNulos")
+    treinador_id = _treinadores(sessao)[0]["id"]
+
+    previa = _prever(sessao, treinador_id)
+
+    corpo = previa.json()
+    assert corpo["valido"] is False
+    assert corpo["codigo"] == "TIME_VAZIO"
+    assert corpo["motivo"]
+    for campo in (
+        "duracao_minutos",
+        "eta_estimado",
+        "dificuldade",
+        "chance_estimada",
+        "capacidade_bagagem",
+    ):
+        assert corpo[campo] is None, campo
 
 
 # --- Alem dos catorze, item 9: o estoque nunca fica negativo -------------------

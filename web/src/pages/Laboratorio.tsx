@@ -14,7 +14,8 @@ import type {
 import { FichaPokemon } from '@/components/FichaPokemon'
 import { FiltrosPokemon, type ValoresFiltroPokemon } from '@/components/FiltrosPokemon'
 import { ListaPokemon } from '@/components/ListaPokemon'
-import { Mochila } from '@/components/Mochila'
+import { Estoque } from '@/components/Estoque'
+import { PainelExpedicoesAtivas } from '@/components/PainelExpedicoesAtivas'
 import { limparSessao } from '@/store/auth'
 
 const TAMANHO_PAGINA = 20
@@ -106,7 +107,7 @@ export function Laboratorio() {
         const mensagem =
           motivo instanceof ApiError
             ? motivo.message
-            : 'Nao foi possivel carregar a mochila. Verifique a conexao.'
+            : 'Nao foi possivel carregar o estoque. Verifique a conexao.'
         setEstadoItens({ tipo: 'erro', mensagem })
       })
   }, [])
@@ -295,6 +296,8 @@ export function Laboratorio() {
         </p>
       )}
 
+      <PainelExpedicoesAtivas />
+
       <section className="secao-acervo" aria-label="Acervo de Pokemon">
         <h2>Acervo</h2>
         <FiltrosPokemon valores={filtros} onMudar={aplicarFiltros} />
@@ -331,10 +334,10 @@ export function Laboratorio() {
         </div>
       </section>
 
-      <section className="secao-mochila" aria-label="Mochila">
-        <h2>Mochila</h2>
+      <section className="secao-estoque" aria-label="Estoque">
+        <h2>Estoque</h2>
 
-        {estadoItens.tipo === 'carregando' && <p>Carregando mochila...</p>}
+        {estadoItens.tipo === 'carregando' && <p>Carregando estoque...</p>}
 
         {estadoItens.tipo === 'erro' && (
           <div>
@@ -347,7 +350,7 @@ export function Laboratorio() {
           </div>
         )}
 
-        {estadoItens.tipo === 'pronto' && <Mochila itens={estadoItens.itens} />}
+        {estadoItens.tipo === 'pronto' && <Estoque itens={estadoItens.itens} />}
       </section>
 
       <button type="button" onClick={sair}>

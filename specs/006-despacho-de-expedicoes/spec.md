@@ -2,13 +2,13 @@
 
 ## Problema
 
-Tudo está pronto e nada acontece. Há treinadores com times montados, um mapa com destinos alcançáveis e durações calculadas, itens na mochila — e nenhuma forma de juntar as três coisas. O professor olha para um treinador pronto e para um destino aberto, e não tem botão nenhum.
+Tudo está pronto e nada acontece. Há treinadores com times montados, um mapa com destinos alcançáveis e durações calculadas, itens no estoque do laboratório — e nenhuma forma de juntar as três coisas. O professor olha para um treinador pronto e para um destino aberto, e não tem botão nenhum.
 
 É também a primeira vez que o jogo vai precisar de **tempo**. Até aqui tudo foi imediato: pede, responde, acabou. Uma expedição é a primeira coisa que começa agora e termina depois, e que precisa continuar correndo com o navegador fechado.
 
 ## Comportamento esperado
 
-O professor escolhe um treinador disponível, um destino alcançável e o que mandar na mochila. Antes de confirmar, vê o que a escolha produz: quanto tempo vai levar, quão difícil é o lugar para aquele time, e quantos Pokémon o treinador conseguirá trazer.
+O professor escolhe um treinador disponível, um destino alcançável e o que mandar na mochila do treinador, tirado do estoque do laboratório. Antes de confirmar, vê o que a escolha produz: quanto tempo vai levar, quão difícil é o lugar para aquele time, e quantos Pokémon o treinador conseguirá trazer.
 
 Confirmada, a expedição parte. Os itens saem do estoque, o treinador fica ocupado, e um cronômetro começa a correr.
 
@@ -55,6 +55,8 @@ Quantas expedições correm ao mesmo tempo é decidido por quantos treinadores e
 ## Fora de escopo
 
 Resolver a expedição e produzir o relatório de campo (é a Fase 7); encontros, batalhas, capturas, experiência, desbloqueio de local; estender ou acelerar uma expedição em curso; reenviar automaticamente; fila de expedições; notificação fora do app; histórico com estatísticas.
+
+Fica fora também **dizer qual item encurta a expedição**. A prévia de duração já responde pelo efeito de tudo que foi escolhido, mas a tela não nomeia o item responsável: ao escolher a mochila o professor vê o que cada categoria faz em campo e não vê que a Poção acelera a viagem. É lacuna conhecida, não esquecimento — o dado existe no acervo e não chega à tela, e fechá-la é a tarefa 10.10 do SDD.
 
 A expedição desta fase **parte e expira, e não volta com nada**. Isso é deliberado: a Fase 7 é quem dá sentido ao retorno, e misturar as duas tornaria o motor impossível de testar isoladamente.
 

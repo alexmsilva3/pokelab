@@ -2,12 +2,14 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  expedicaoResumoExemplo,
   itensExemplo,
   laboratorioExemplo,
   listaPokemonExemplo,
   perfilExemplo,
   pokemonDetalheExemplo,
   pokemonResumoExemplo,
+  respostaExpedicoesExemplo,
   resumoExemplo,
 } from '@/api/fixtures'
 import { Laboratorio } from '@/pages/Laboratorio'
@@ -44,6 +46,9 @@ function manipuladorPadrao(url: string, init?: RequestInit) {
   }
   if (url.includes('/items')) {
     return respostaJson(itensExemplo())
+  }
+  if (url.includes('/expeditions')) {
+    return respostaJson(respostaExpedicoesExemplo({ items: [], total: 0 }))
   }
   if (url.includes('/me')) {
     return respostaJson(perfilExemplo())
@@ -236,5 +241,54 @@ describe('Laboratorio', () => {
 
     expect(await screen.findByRole('heading', { name: 'Fofoletes' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Fofoletes/ })).toBeInTheDocument()
+  })
+
+  it('a secao de itens do laboratorio chama-se Estoque', async () => {
+    vi.stubGlobal('fetch', criarFetchMock(manipuladorPadrao))
+
+    renderLaboratorio()
+
+    expect(await screen.findByRole('heading', { name: 'Estoque' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Estoque' })).toBeInTheDocument()
+  })
+
+  it('mostra as expedicoes em andamento reusando o cartao de expedicao', async () => {
+    const ativa = expedicaoResumoExemplo({
+      treinador_nome: 'Ash',
+      local_destino_nome: 'Route 1',
+      estado_observado: 'EM_CURSO',
+      segundos_restantes: 90,
+    })
+    vi.stubGlobal(
+      'fetch',
+      criarFetchMock((url, init) => {
+        if (url.includes('/expeditions')) {
+          return respostaJson(respostaExpedicoesExemplo({ items: [ativa], total: 1 }))
+        }
+        return manipuladorPadrao(url, init)
+      }),
+    )
+
+    renderLaboratorio()
+
+    const painel = await screen.findByRole('region', { name: 'Expedicoes em andamento' })
+    const cartao = await within(painel).findByRole('article', { name: /Ash/i })
+    expect(within(cartao).getByText('Destino: Route 1')).toBeInTheDocument()
+    // O numero exibido e o mesmo que o CartaoExpedicao ja formata a partir do
+    // servidor (Artigo II): esta tela nao reimplementa contador algum.
+    expect(within(cartao).getByText('01:30')).toBeInTheDocument()
+  })
+
+  it('sem expedicao em andamento, o painel aponta para o despacho', async () => {
+    vi.stubGlobal('fetch', criarFetchMock(manipuladorPadrao))
+
+    renderLaboratorio()
+
+    const painel = await screen.findByRole('region', { name: 'Expedicoes em andamento' })
+    expect(await within(painel).findByText(/Nenhuma expedicao em andamento/)).toBeInTheDocument()
+    expect(within(painel).getByRole('link', { name: /despache um treinador/i })).toHaveAttribute(
+      'href',
+      '/expedicoes',
+    )
   })
 })
