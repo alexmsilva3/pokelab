@@ -24,12 +24,25 @@ from sqlalchemy import Select, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.game.expedition import DespachoCalculado, EventoDeCampo, ItemDoRelatorio
-from app.models import Expedicao, ExpedicaoEvento, ExpedicaoItem
+from app.models import (
+    Expedicao,
+    ExpedicaoEvento,
+    ExpedicaoItem,
+    PokemonInstancia,
+    Treinador,
+)
 
 
 def _relacoes_base(consulta: Select) -> Select:
     return consulta.options(
-        joinedload(Expedicao.treinador),
+        # O time do treinador vem junto porque o cartao do painel mostra quem
+        # esta em campo e com o que. `selectinload` encadeado e UMA consulta por
+        # nivel, nao uma por expedicao: sem isso, dez expedicoes na tela viram
+        # vinte e uma consultas (plan.md, secao 6: "cuidado com N+1"). Ha teste
+        # contando consultas em test_expedicoes.py.
+        joinedload(Expedicao.treinador).selectinload(Treinador.time).joinedload(
+            PokemonInstancia.especie
+        ),
         joinedload(Expedicao.local_destino),
         joinedload(Expedicao.local_origem),
         selectinload(Expedicao.itens).joinedload(ExpedicaoItem.item),

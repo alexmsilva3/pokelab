@@ -637,10 +637,17 @@ button:disabled {
   margin-top: var(--espaco-4);
 }
 
+/* O mapa e quadrado (viewBox 128x128). Com `width: 100%` ele tomava a largura
+   inteira do container e, sendo quadrado, a mesma altura — uma tela de mapa que
+   so cabia rolando. O teto de altura resolve sem mexer na proporcao, e o
+   `margin-inline: auto` o mantem centrado quando a largura sobra. */
 .mapa-kanto {
   display: block;
   width: 100%;
+  max-width: 420px;
+  max-height: 420px;
   height: auto;
+  margin-inline: auto;
 }
 
 .mapa-aresta {
@@ -1551,4 +1558,66 @@ button:disabled {
   margin: 0;
   font-size: 0.85rem;
   color: var(--cor-texto-suave);
+}
+
+
+/* O relatorio de campo.
+   Eram cinco secoes empilhadas em largura cheia, e tres delas sao listas
+   curtas: capturas, experiencia e itens ficavam com uma coluna de texto no
+   meio de muito branco, e a pagina crescia sem precisar. Em tela larga as tres
+   dividem a linha; em tela estreita voltam a empilhar sozinhas, sem media
+   query, porque `auto-fit` com `minmax` ja faz isso. */
+.relatorio-corpo {
+  display: grid;
+  gap: var(--espaco-3);
+  grid-template-columns: 1fr;
+}
+
+.relatorio-blocos {
+  display: grid;
+  gap: var(--espaco-3);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: start;
+}
+
+.relatorio-blocos > section {
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  background: var(--cor-superficie);
+  padding: var(--espaco-3);
+}
+
+.relatorio-blocos h2,
+.relatorio-linha-do-tempo h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+/* Cartao de expedicao: retrato ao lado do nome, time embaixo. */
+.cartao-expedicao-treinador {
+  display: flex;
+  align-items: center;
+  gap: var(--espaco-2);
+}
+
+.cartao-expedicao-treinador h3,
+.cartao-expedicao-treinador p {
+  margin: 0;
+}
+
+.cartao-expedicao-time {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espaco-2);
+  margin: var(--espaco-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
+}
+
+.cartao-expedicao-time > li {
+  display: flex;
+  align-items: center;
+  gap: var(--espaco-1);
 }

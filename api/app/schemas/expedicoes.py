@@ -21,6 +21,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, field_serializer
 
+from app.schemas.pokemon import PokemonResumo
+from app.schemas.trainers import AvatarLer
+
 # Os quatro valores que a coluna `status` grava (SDD 3.2) e os cinco que a
 # leitura pode mostrar: `AGUARDANDO_RELATORIO` nao e gravado, e derivado a
 # cada leitura por `game.expedition.estado_observado` (mesmo padrao de
@@ -194,6 +197,15 @@ class ExpedicaoResumoLer(BaseModel):
 
     treinador_id: uuid.UUID
     treinador_nome: str
+    # Retrato e time viajam junto com a expedicao para o cartao do painel poder
+    # mostrar QUEM esta em campo e com o que — hoje so o nome aparecia, e o
+    # professor tinha de abrir outra tela para lembrar o que mandou.
+    #
+    # O time e o do momento da leitura, e isso e correto e nao uma aproximacao:
+    # o treinador esta ocupado, e o invariante 3 proibe alterar o time de quem
+    # esta ocupado. O que esta no banco agora e o que partiu.
+    treinador_avatar: AvatarLer
+    treinador_time: list[PokemonResumo]
 
     local_destino_id: str
     local_destino_nome: str

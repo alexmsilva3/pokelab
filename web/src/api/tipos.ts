@@ -398,6 +398,14 @@ export interface ExpedicaoResumo {
   id: string
   treinador_id: string
   treinador_nome: string
+  /**
+   * Retrato e time de quem esta em campo. Vem junto da expedicao para o cartao
+   * do painel nao precisar de uma segunda consulta por linha — e o time e o do
+   * momento, que e correto: o treinador esta ocupado, e o invariante 3 proibe
+   * mexer no time de quem esta ocupado.
+   */
+  treinador_avatar: AvatarTreinador
+  treinador_time: PokemonResumo[]
   local_destino_id: string
   local_destino_nome: string
   local_origem_id: string

@@ -90,7 +90,9 @@ from app.schemas.expedicoes import (
     PreviaDespachoLer,
     RelatorioDeCampoLer,
 )
+from app.schemas.pokemon import PokemonResumo
 from app.services import relogio
+from app.services.trainers import avatar_para_ler
 
 # --- Traducao ORM -> dominio (fronteira do Artigo I) ------------------------
 
@@ -233,7 +235,7 @@ def _itens_desconhecidos(
 # --- Leitura (criterios 9 a 11 e 13) -----------------------------------------
 
 
-def _campos_comuns_ler(expedicao: Expedicao, agora: datetime) -> dict:
+def _campos_comuns_ler(expedicao: Expedicao, agora: datetime, escala: float) -> dict:
     """Os campos que `ExpedicaoResumoLer` e `ExpedicaoLer` compartilham.
 
     `estado_observado` e `segundos_restantes` vem de `game.expedition`, a
@@ -250,6 +252,23 @@ def _campos_comuns_ler(expedicao: Expedicao, agora: datetime) -> dict:
         "id": expedicao.id,
         "treinador_id": expedicao.treinador_id,
         "treinador_nome": expedicao.treinador.nome,
+        "treinador_avatar": avatar_para_ler(expedicao.treinador.avatar),
+        # O HP vem DERIVADO, pela mesma funcao que a ficha do treinador usa, e
+        # nao do valor cru: dois lugares mostrando HP diferente para o mesmo
+        # Pokemon foi defeito na Fase 7. Em expedicao a recuperacao nao corre
+        # (invariante 18), e e a propria funcao que sabe disso.
+        "treinador_time": [
+            PokemonResumo.de_modelo(
+                pokemon,
+                hp_atual_pct=relogio.hp_observado(
+                    pokemon.hp_atual_pct,
+                    pokemon.hp_atualizado_em,
+                    agora=agora,
+                    escala=escala,
+                ),
+            )
+            for pokemon in expedicao.treinador.time
+        ],
         "local_destino_id": expedicao.local_destino_id,
         "local_destino_nome": expedicao.local_destino.nome,
         "local_origem_id": expedicao.local_origem_id,
@@ -276,17 +295,21 @@ def _campos_comuns_ler(expedicao: Expedicao, agora: datetime) -> dict:
     }
 
 
-def _montar_expedicao_resumo(expedicao: Expedicao, agora: datetime) -> ExpedicaoResumoLer:
+def _montar_expedicao_resumo(
+    expedicao: Expedicao, agora: datetime, escala: float
+) -> ExpedicaoResumoLer:
     """A linha de `GET /expeditions` (revisao da Fase 7, achado 1): sem relatorio.
 
     Usada so pela listagem. Nunca chama `_montar_relatorio_ler`: o ponto desta
     funcao e justamente nao pagar o custo de montar a linha do tempo inteira
     de cada expedicao so para o painel mostrar um cartao.
     """
-    return ExpedicaoResumoLer(**_campos_comuns_ler(expedicao, agora))
+    return ExpedicaoResumoLer(**_campos_comuns_ler(expedicao, agora, escala))
 
 
-def _montar_expedicao_ler(expedicao: Expedicao, agora: datetime) -> ExpedicaoLer:
+def _montar_expedicao_ler(
+    expedicao: Expedicao, agora: datetime, escala: float
+) -> ExpedicaoLer:
     """A ficha completa que `GET /expeditions/{id}` e o `claim` devolvem.
 
     A unica diferenca para `_montar_expedicao_resumo` e o relatorio: aqui,
@@ -294,7 +317,7 @@ def _montar_expedicao_ler(expedicao: Expedicao, agora: datetime) -> ExpedicaoLer
     que o professor pediu ao abrir esta expedicao especifica.
     """
     return ExpedicaoLer(
-        **_campos_comuns_ler(expedicao, agora),
+        **_campos_comuns_ler(expedicao, agora, escala),
         relatorio=_montar_relatorio_ler(expedicao),
     )
 
@@ -325,8 +348,9 @@ def listar(
     historico aceita um `limite` maior quando o professor pedir.
     """
     agora = datetime.now(UTC)
+    escala = get_settings().expedition_time_scale
     expedicoes = expedicoes_repo.listar(sessao, laboratorio_id, limite)
-    linhas = [_montar_expedicao_resumo(expedicao, agora) for expedicao in expedicoes]
+    linhas = [_montar_expedicao_resumo(expedicao, agora, escala) for expedicao in expedicoes]
     if status:
         procurados = set(status)
         linhas = [linha for linha in linhas if linha.estado_observado in procurados]
@@ -337,7 +361,9 @@ def obter(sessao: Session, laboratorio_id: uuid.UUID, expedicao_id: uuid.UUID) -
     expedicao = expedicoes_repo.buscar_detalhe(sessao, laboratorio_id, expedicao_id)
     if expedicao is None:
         raise RecursoNaoEncontrado()
-    return _montar_expedicao_ler(expedicao, datetime.now(UTC))
+    return _montar_expedicao_ler(
+        expedicao, datetime.now(UTC), get_settings().expedition_time_scale
+    )
 
 
 # --- Despacho (criterios 1 a 8 e 14) -----------------------------------------
@@ -461,7 +487,9 @@ def despachar(
     atualizada = expedicoes_repo.buscar_detalhe(sessao, laboratorio_id, expedicao.id)
     if atualizada is None:  # pragma: no cover - impossivel, acabamos de gravar
         raise RecursoNaoEncontrado()
-    return _montar_expedicao_ler(atualizada, datetime.now(UTC))
+    return _montar_expedicao_ler(
+        atualizada, datetime.now(UTC), get_settings().expedition_time_scale
+    )
 
 
 def prever(
@@ -592,7 +620,9 @@ def abortar(sessao: Session, laboratorio_id: uuid.UUID, expedicao_id: uuid.UUID)
     atualizada = expedicoes_repo.buscar_detalhe(sessao, laboratorio_id, expedicao_id)
     if atualizada is None:  # pragma: no cover - impossivel, acabamos de gravar
         raise RecursoNaoEncontrado()
-    return _montar_expedicao_ler(atualizada, datetime.now(UTC))
+    return _montar_expedicao_ler(
+        atualizada, datetime.now(UTC), get_settings().expedition_time_scale
+    )
 
 
 # --- Relatorio de campo (spec 007, ADR-006) ----------------------------------
@@ -924,7 +954,10 @@ def _resposta_do_claim(
     if relatorio_ler is None:  # pragma: no cover - so chega aqui ja resolvida
         raise RecursoNaoEncontrado()
     return ExpedicaoClaimLer(
-        expedicao=_montar_expedicao_ler(atualizada, agora), relatorio=relatorio_ler
+        expedicao=_montar_expedicao_ler(
+            atualizada, agora, get_settings().expedition_time_scale
+        ),
+        relatorio=relatorio_ler,
     )
 
 

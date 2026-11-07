@@ -85,7 +85,7 @@ def _poder_do_treinador(treinador: Treinador, agora: datetime, escala: float) ->
     )
 
 
-def _avatar_para_ler(gravado: dict) -> AvatarLer:
+def avatar_para_ler(gravado: dict) -> AvatarLer:
     """Traduz o avatar do JSONB para o contrato.
 
     A coluna guarda `classe` (o identificador da classe de treinador); a API
@@ -108,7 +108,7 @@ def _campos_comuns(treinador: Treinador, agora: datetime, escala: float) -> dict
     return {
         "id": treinador.id,
         "nome": treinador.nome,
-        "avatar": _avatar_para_ler(treinador.avatar),
+        "avatar": avatar_para_ler(treinador.avatar),
         "nivel": treinador.nivel,
         "experiencia": treinador.experiencia,
         "status": treinador.status,

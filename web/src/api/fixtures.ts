@@ -492,6 +492,8 @@ export function expedicaoResumoExemplo(sobrescritas: Partial<ExpedicaoResumo> = 
     id: 'expedicao-1',
     treinador_id: 'treinador-1',
     treinador_nome: 'Ash',
+    treinador_avatar: avatarTreinadorExemplo(),
+    treinador_time: [pokemonResumoExemplo()],
     local_destino_id: 'route-1',
     local_destino_nome: 'Route 1',
     local_origem_id: 'pallet-town',

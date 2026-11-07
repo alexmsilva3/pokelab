@@ -28,6 +28,8 @@ import { useNavigate } from 'react-router-dom'
 import { ApiError } from '@/api/client'
 import { receberRelatorio } from '@/api/expedicoes'
 import type { ExpedicaoResumo } from '@/api/tipos'
+import { AvatarTreinador } from '@/components/AvatarTreinador'
+import { SpritePokemon } from '@/components/SpritePokemon'
 import { ContadorRegressivo } from '@/components/ContadorRegressivo'
 import { rotuloEstadoObservado } from '@/lib/expedicoes'
 
@@ -108,8 +110,37 @@ export function CartaoExpedicao({
 
   return (
     <article className="cartao-expedicao" aria-label={`Expedicao de ${expedicao.treinador_nome}`}>
-      <h3>{expedicao.treinador_nome}</h3>
-      <p className="cartao-expedicao-destino">Destino: {expedicao.local_destino_nome}</p>
+      {/*
+        Retrato e time ao lado do nome: o professor olha o painel para lembrar
+        QUEM esta fora e com o que, e antes tinha de abrir a tela de treinadores
+        para isso. O retrato e decorativo (`aria-hidden`) porque o nome ja esta
+        no <h3> ao lado; o time e lista de verdade, com rotulo proprio.
+      */}
+      <div className="cartao-expedicao-treinador">
+        <span aria-hidden="true">
+          <AvatarTreinador avatar={expedicao.treinador_avatar} nome={expedicao.treinador_nome} />
+        </span>
+        <div>
+          <h3>{expedicao.treinador_nome}</h3>
+          <p className="cartao-expedicao-destino">Destino: {expedicao.local_destino_nome}</p>
+        </div>
+      </div>
+
+      {expedicao.treinador_time.length > 0 && (
+        <ul
+          className="cartao-expedicao-time"
+          aria-label={`Time de ${expedicao.treinador_nome}`}
+        >
+          {expedicao.treinador_time.map((pokemon) => (
+            <li key={pokemon.id}>
+              <SpritePokemon caminho={pokemon.sprite} nome={pokemon.especie_nome} tamanho="pequena" />
+              <span>
+                {pokemon.especie_nome} Nv. {pokemon.nivel}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
       <span className="rotulo">{rotuloEstadoObservado(expedicao.estado_observado)}</span>
 
       {/*

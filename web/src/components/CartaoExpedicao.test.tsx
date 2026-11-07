@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { expedicaoLerExemplo, respostaClaimExpedicaoExemplo } from '@/api/fixtures'
+import { expedicaoLerExemplo, pokemonResumoExemplo, respostaClaimExpedicaoExemplo } from '@/api/fixtures'
 import { CartaoExpedicao } from '@/components/CartaoExpedicao'
 import { RelatorioDeCampo } from '@/pages/RelatorioDeCampo'
 
@@ -188,4 +188,38 @@ describe('botao de abortar', () => {
       expect(screen.queryByRole('button', { name: 'Abortar' })).not.toBeInTheDocument()
     },
   )
+})
+
+describe('treinador em campo', () => {
+  it('mostra o retrato e o time de quem esta fora', () => {
+    // O painel existe para o professor lembrar QUEM mandou e com o que, sem
+    // abrir a tela de treinadores.
+    renderCartao({
+      treinador_nome: 'Pat',
+      treinador_time: [
+        pokemonResumoExemplo({ id: 'p1', especie_nome: 'Bulbasaur', nivel: 7 }),
+        pokemonResumoExemplo({ id: 'p2', especie_nome: 'Pidgey', nivel: 4 }),
+      ],
+    })
+
+    expect(screen.getByRole('list', { name: 'Time de Pat' })).toBeInTheDocument()
+    expect(screen.getByText(/Bulbasaur Nv. 7/)).toBeInTheDocument()
+    expect(screen.getByText(/Pidgey Nv. 4/)).toBeInTheDocument()
+  })
+
+  it('o retrato nao vira ruido para leitor de tela', () => {
+    // O nome ja esta no <h3> ao lado; o retrato repetiria a mesma informacao,
+    // entao ele fica escondido da arvore de acessibilidade. `queryByRole` so
+    // enxerga o que esta exposto — se o retrato vazasse, este teste pegaria.
+    renderCartao({ treinador_nome: 'Pat' })
+
+    expect(screen.queryByRole('img', { name: 'Retrato de Pat' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Pat' })).toBeInTheDocument()
+  })
+
+  it('treinador sem time nao desenha lista vazia', () => {
+    renderCartao({ treinador_nome: 'Pat', treinador_time: [] })
+
+    expect(screen.queryByRole('list', { name: 'Time de Pat' })).not.toBeInTheDocument()
+  })
 })

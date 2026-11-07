@@ -116,7 +116,7 @@ function ConteudoRelatorio({
   const sucesso = relatorio.status === 'CONCLUIDA_SUCESSO'
 
   return (
-    <>
+    <div className="relatorio-corpo">
       <section aria-label="Resultado">
         <p
           className={
@@ -131,32 +131,41 @@ function ConteudoRelatorio({
         </p>
       </section>
 
-      <section aria-label="Capturas">
-        <h2>Capturas</h2>
-        <CapturasDoRelatorio capturas={relatorio.capturas} />
-      </section>
+      {/*
+        As tres listas curtas dividem a linha em tela larga e empilham em tela
+        estreita, sem media query — `auto-fit` com `minmax` resolve. Cada uma
+        continua sendo uma <section> com rotulo proprio: o agrupamento e
+        visual, e a navegacao por regiao do leitor de tela nao muda.
+      */}
+      <div className="relatorio-blocos">
+        <section aria-label="Capturas">
+          <h2>Capturas</h2>
+          <CapturasDoRelatorio capturas={relatorio.capturas} />
+        </section>
 
-      <section aria-label="Experiencia ganha">
-        <h2>Experiencia</h2>
-        <ExperienciasDoRelatorio
-          time={relatorio.time}
-          treinador={relatorio.treinador}
-          laboratorio={relatorio.laboratorio}
-        />
-      </section>
+        <section aria-label="Experiencia ganha">
+          <h2>Experiencia</h2>
+          <ExperienciasDoRelatorio
+            time={relatorio.time}
+            treinador={relatorio.treinador}
+            laboratorio={relatorio.laboratorio}
+          />
+        </section>
 
-      <section aria-label="Itens">
-        <h2>Itens</h2>
-        <ItensDoRelatorio
-          consumidos={relatorio.itens_consumidos}
-          encontrados={relatorio.itens_encontrados}
-        />
-      </section>
+        <section aria-label="Itens">
+          <h2>Itens</h2>
+          <ItensDoRelatorio
+            consumidos={relatorio.itens_consumidos}
+            encontrados={relatorio.itens_encontrados}
+          />
+        </section>
+      </div>
 
-      <section aria-label="Linha do tempo">
+      {/* A linha do tempo fica em largura cheia: e a unica lista que cresce. */}
+      <section aria-label="Linha do tempo" className="relatorio-linha-do-tempo">
         <h2>Linha do tempo</h2>
         <Timeline eventos={relatorio.eventos} />
       </section>
-    </>
+    </div>
   )
 }
