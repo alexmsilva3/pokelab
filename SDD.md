@@ -362,6 +362,8 @@ Esse é um trade-off deliberado e não um efeito colateral. Time grande vence ma
 
 Atingida a capacidade, o treinador para de capturar mas **continua registrando** na Pokédex tudo que enfrenta. Uma expedição com a bagagem cheia ainda produz conhecimento.
 
+E o relatório **diz isso em voz alta**. Sem um evento marcando o momento, os encontros seguintes aparecem como batalhas sem captura, e o professor não distingue bagagem cheia de azar na rolagem — informação que ele precisa para montar o próximo despacho. O evento não consome sorteio, então a ordem do contrato (4.5) segue intacta.
+
 ### 4.7 Descoberta e desbloqueio
 
 Uma espécie que **não estava no retrato da Pokédex gravado no despacho** gera `DESCOBERTA` ao ser enfrentada, e marca `visto` na Pokédex na resolução, com ou sem captura. O critério é o retrato (`Expedicao.especies_vistas_no_envio`, 3.2), nunca a Pokédex no instante em que o professor recebe o relatório.
@@ -771,24 +773,25 @@ Esta fase **não toca o motor da Fase 7**. O viveiro não limita a captura: ele 
 |---|---|---|---|
 | 8.1 | **Viveiro**: `CAPACIDADE_VIVEIRO` em `balance.py`, ocupação, e a regra de transbordo (4.10) | `pokelab-domain` | `pokelab-domain-rules` |
 | 8.2 | Guarda do despacho com o viveiro transbordado (invariante 21), com erro próprio dizendo quantos lugares faltam. Reclamar, entregar e soltar seguem liberados | `pokelab-domain` | `pokelab-domain-rules` |
-| 8.3 | **Soltar**: invariantes 24 e 25 no domínio — não solta quem está em expedição ou comprometido, e nunca solta a última criatura do laboratório | `pokelab-domain` | `pokelab-domain-rules` |
-| 8.4 | `GET /ranch`: ocupação, capacidade e o que está guardado; ocupação no resumo do laboratório | `pokelab-api` | `pokelab-api-conventions` |
-| 8.5 | `DELETE /pokemon/{id}`: solta o Pokémon do viveiro ou do time, sem recompensa, mantendo a Pokédex intacta | `pokelab-api` | `pokelab-api-conventions` |
-| 8.6 | Modelos `Entrega` e `EntregaRequisito`, campo `comprometido_entrega_id` em `PokemonInstancia`, migração | `pokelab-api` | `pokelab-api-conventions` |
-| 8.7 | `game/delivery.py`: gerador de pedidos — 1 a 3 espécies distintas sorteadas do que o professor já viu, com peso maior para o já capturado, quantidade ponderada pela taxa de captura (questão 22), destino entre as cidades desbloqueadas, e `expira_em` a partir de `VALIDADE_ENTREGA_MINUTOS`. Pokédex vazia é caso de borda, não exceção | `pokelab-domain` | `pokelab-domain-rules` |
-| 8.8 | **Prazo da oferta**: `EXPIRADA` como estado observado derivado de `expira_em`, pela mesma função única do ADR-004. Pedido vencido não pode ser aceito e some dos aceitáveis | `pokelab-domain` | `pokelab-domain-rules` |
-| 8.9 | Duração da entrega (só travessia, ida e volta) e cálculo das recompensas em moeda e experiência | `pokelab-domain` | `pokelab-domain-rules` |
-| 8.10 | `GET /deliveries`: disponíveis, em curso, expiradas e histórico, com o motivo de cada pedido inviável hoje e quantas vagas existem para repor | `pokelab-api` | `pokelab-api-conventions` |
-| 8.11 | `POST /deliveries/refresh`: repõe vaga de expiração e de aceite **sem consumir o intervalo** (invariante 23); regerar a lista inteira continua preso aos 15 minutos (invariante 15), devolvendo quanto falta quando recusa | `pokelab-api` | `pokelab-api-conventions` |
-| 8.12 | `POST /deliveries/{id}/accept`: recebe **os Pokémon escolhidos pelo professor**, recusa pedido expirado, valida espécie, quantidade e disponibilidade no viveiro, compromete os Pokémon, ocupa o treinador, grava `eta` | `pokelab-api` | `pokelab-domain-rules` |
-| 8.13 | `POST /deliveries/{id}/claim`: remove em definitivo os Pokémon entregues, credita moedas e experiência, libera o treinador e o lugar no viveiro | `pokelab-api` | `pokelab-domain-rules` |
-| 8.14 | Claim explícito e idempotente, no mesmo padrão da expedição (ADR-006 e Artigo VII). **Primeira operação destrutiva do jogo** — resolver duas vezes apagaria Pokémon que não deviam sair | `pokelab-api` | `pokelab-api-conventions` |
-| 8.15 | Tela do viveiro: ocupação, lista do que está guardado, aviso claro quando está transbordado — quantos lugares faltam e que o despacho está travado até caber — e **soltar com confirmação nomeando quem vai embora** | `pokelab-frontend` | `pokelab-ui-kit` |
-| 8.16 | Tela Central de Entregas: pedidos com requisito, destino, duração estimada, recompensa e **quanto falta para o pedido vencer**; botão de repor e botão de regerar, com o tempo restante de cada um | `pokelab-frontend` | `pokelab-ui-kit` |
-| 8.17 | Seleção dos Pokémon no aceite, com confirmação explícita nomeando quem sai do laboratório para sempre | `pokelab-frontend` | `pokelab-ui-kit` |
-| 8.18 | Testes do viveiro: três expedições voltam com mais Pokémon do que cabe e **todos entram**; transbordado, o despacho é recusado e reclamar, entregar e soltar continuam liberados; soltar devolve lugar e não paga nada; soltar Pokémon em expedição ou comprometido recusado; soltar a última criatura do laboratório recusado; Pokédex sobrevive ao soltar | `pokelab-test` | — |
-| 8.19 | Testes do prazo: pedido vence sozinho sem nenhuma escrita no banco; pedido expirado não pode ser aceito; repor vaga expirada não espera os 15 minutos; descartar pedido válido continua esperando | `pokelab-test` | — |
-| 8.20 | Testes da entrega: pedido com 4 espécies rejeitado na geração; aceite com Pokémon que não atende ao pedido rejeitado; Pokémon comprometido fora de time e de expedição; claim concorrente não apaga Pokémon duas vezes | `pokelab-test` | — |
+| 8.3 | Evento de relatório marcando quando a captura parou por bagagem cheia, distinguindo de azar na rolagem. Aditivo: não consome sorteio, a ordem do contrato não muda | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.4 | **Soltar**: invariantes 24 e 25 no domínio — não solta quem está em expedição ou comprometido, e nunca solta a última criatura do laboratório | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.5 | `GET /ranch`: ocupação, capacidade e o que está guardado; ocupação no resumo do laboratório | `pokelab-api` | `pokelab-api-conventions` |
+| 8.6 | `DELETE /pokemon/{id}`: solta o Pokémon do viveiro ou do time, sem recompensa, mantendo a Pokédex intacta | `pokelab-api` | `pokelab-api-conventions` |
+| 8.7 | Modelos `Entrega` e `EntregaRequisito`, campo `comprometido_entrega_id` em `PokemonInstancia`, migração | `pokelab-api` | `pokelab-api-conventions` |
+| 8.8 | `game/delivery.py`: gerador de pedidos — 1 a 3 espécies distintas sorteadas do que o professor já viu, com peso maior para o já capturado, quantidade ponderada pela taxa de captura (questão 22), destino entre as cidades desbloqueadas, e `expira_em` a partir de `VALIDADE_ENTREGA_MINUTOS`. Pokédex vazia é caso de borda, não exceção | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.9 | **Prazo da oferta**: `EXPIRADA` como estado observado derivado de `expira_em`, pela mesma função única do ADR-004. Pedido vencido não pode ser aceito e some dos aceitáveis | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.10 | Duração da entrega (só travessia, ida e volta) e cálculo das recompensas em moeda e experiência | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.11 | `GET /deliveries`: disponíveis, em curso, expiradas e histórico, com o motivo de cada pedido inviável hoje e quantas vagas existem para repor | `pokelab-api` | `pokelab-api-conventions` |
+| 8.12 | `POST /deliveries/refresh`: repõe vaga de expiração e de aceite **sem consumir o intervalo** (invariante 23); regerar a lista inteira continua preso aos 15 minutos (invariante 15), devolvendo quanto falta quando recusa | `pokelab-api` | `pokelab-api-conventions` |
+| 8.13 | `POST /deliveries/{id}/accept`: recebe **os Pokémon escolhidos pelo professor**, recusa pedido expirado, valida espécie, quantidade e disponibilidade no viveiro, compromete os Pokémon, ocupa o treinador, grava `eta` | `pokelab-api` | `pokelab-domain-rules` |
+| 8.14 | `POST /deliveries/{id}/claim`: remove em definitivo os Pokémon entregues, credita moedas e experiência, libera o treinador e o lugar no viveiro | `pokelab-api` | `pokelab-domain-rules` |
+| 8.15 | Claim explícito e idempotente, no mesmo padrão da expedição (ADR-006 e Artigo VII). **Primeira operação destrutiva do jogo** — resolver duas vezes apagaria Pokémon que não deviam sair | `pokelab-api` | `pokelab-api-conventions` |
+| 8.16 | Tela do viveiro: ocupação, lista do que está guardado, aviso claro quando está transbordado — quantos lugares faltam e que o despacho está travado até caber — e **soltar com confirmação nomeando quem vai embora** | `pokelab-frontend` | `pokelab-ui-kit` |
+| 8.17 | Tela Central de Entregas: pedidos com requisito, destino, duração estimada, recompensa e **quanto falta para o pedido vencer**; botão de repor e botão de regerar, com o tempo restante de cada um | `pokelab-frontend` | `pokelab-ui-kit` |
+| 8.18 | Seleção dos Pokémon no aceite, com confirmação explícita nomeando quem sai do laboratório para sempre | `pokelab-frontend` | `pokelab-ui-kit` |
+| 8.19 | Testes do viveiro: três expedições voltam com mais Pokémon do que cabe e **todos entram**; transbordado, o despacho é recusado e reclamar, entregar e soltar continuam liberados; soltar devolve lugar e não paga nada; soltar Pokémon em expedição ou comprometido recusado; soltar a última criatura do laboratório recusado; Pokédex sobrevive ao soltar | `pokelab-test` | — |
+| 8.20 | Testes do prazo: pedido vence sozinho sem nenhuma escrita no banco; pedido expirado não pode ser aceito; repor vaga expirada não espera os 15 minutos; descartar pedido válido continua esperando | `pokelab-test` | — |
+| 8.21 | Testes da entrega: pedido com 4 espécies rejeitado na geração; aceite com Pokémon que não atende ao pedido rejeitado; Pokémon comprometido fora de time e de expedição; claim concorrente não apaga Pokémon duas vezes | `pokelab-test` | — |
 
 **Pronto quando:** o professor vê o viveiro transbordar e tem de escolher quem solta para voltar a despachar, escolhe quais Pokémon manda numa entrega, perde esses Pokémon, ganha moeda e experiência de laboratório, recupera o lugar no viveiro, e o treinador fica indisponível durante a viagem. Um pedido que ninguém aceitou vence sozinho e dá lugar a outro, e o professor pode soltar o que não quer guardar.
 
@@ -947,7 +950,17 @@ A moeda já é paga pelas entregas (Fase 8) e não compra nada na v1. Vai compra
 
 A expansão do viveiro é provavelmente a primeira compra que o jogador vai querer, e por isso merece cuidado: ela é a válvula que alivia a pressão que a Central de Entregas cria. Barata demais e o limite de 50 nunca é sentido; cara demais e o professor fica entalado sem saber o que fazer. O número sai da Fase 9, junto com a renda por entrega.
 
-### 10.4 Evolução fora do nível
+### 10.4 Intervir na expedição em curso
+
+Soltar um Pokémon no meio da expedição para abrir vaga na bagagem, ou trocar a carga, ou mandar o treinador voltar antes. Hoje nada disso é possível, e não por falta de botão.
+
+Enquanto a expedição corre não existe estado parcial: o despacho grava semente, duração, dificuldade e poder, e **nenhum encontro é calculado**. A resolução inteira acontece no instante do claim, a partir da semente. Não há quatro Pidgey na bagagem para soltar — há uma semente que, quando for lida, dirá que houve quatro.
+
+Ter isso exige **resolução incremental**: calcular os eventos até agora a cada leitura, persistir o parcial, e deixar a intervenção do professor entre dois pedaços mudar os pedaços seguintes. O preço é alto e cai todo no que mais custou a assentar — a resolução atômica e idempotente do Artigo VII e do ADR-006 viraria uma sequência de resoluções parciais, cada uma com lock e idempotência próprios, e toda leitura voltaria a ser escrita, contrariando o ADR-006.
+
+Antes de pagar isso, medir se o problema é grande: a tarefa de relatório da Fase 8 passa a marcar quando a bagagem encheu, e a Fase 9 vai dizer com que frequência isso acontece de fato. Pode ser que a decisão no despacho — time menor por mais bagagem — já resolva.
+
+### 10.5 Evolução fora do nível
 
 As 100 espécies que não evoluem por nível: pedra, troca e amizade. Levantamento na tarefa 10.7 (questão 17).
 
