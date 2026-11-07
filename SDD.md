@@ -745,10 +745,12 @@ Spec em [specs/006-despacho-de-expedicoes/](specs/006-despacho-de-expedicoes/). 
 
 ---
 
-### Fase 7 — Relatório de Campo
+### Fase 7 — Relatório de Campo — CONCLUÍDA (2026-11-07)
 *O motor. Resolução de encontros, EXP, captura, evolução e retorno.*
 
-Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqui toca I/O além da camada de serviço. Spec em [specs/007-relatorio-de-campo/](specs/007-relatorio-de-campo/); o ADR-006 revê a 7.7 original, que pedia resolução dentro do `GET`.
+Spec em [specs/007-relatorio-de-campo/](specs/007-relatorio-de-campo/). 990 testes de backend e 108 de frontend. Três rodadas de revisão, a última por **mutação**: 14 das 15 mutações morrem. As lentes de leitura acharam a guarda de bagagem que descontava as Pokébolas duas vezes e o `SELECT ... FOR UPDATE` que devolvia objeto obsoleto do identity map; a mutação achou o que elas não viam — doze buracos de cobertura, todos com a mesma causa, testes conferindo o resumo gravado contra o resumo gravado.
+
+Foi a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqui toca I/O além da camada de serviço. Spec em [specs/007-relatorio-de-campo/](specs/007-relatorio-de-campo/); o ADR-006 revê a 7.7 original, que pedia resolução dentro do `GET`.
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
