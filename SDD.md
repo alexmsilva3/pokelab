@@ -148,7 +148,7 @@ Professor (1) ── (1) Laboratorio
 
 O nível do laboratório não é decorativo: ele define `limite_treinadores`, e é por aí que o professor expande a própria capacidade de operar. Não há `slots_expedicao` — o limite de expedições simultâneas é o número de treinadores disponíveis.
 
-**PokemonInstancia** — `id`, `laboratorio_id`, `especie_id`, `apelido`, `nivel`, `experiencia`, `hp_atual_pct` (0..100, desgaste pós-expedição), `hp_atualizado_em` (marco da recuperação passiva, 4.8), `treinador_id` (nulo = está no laboratório), `comprometido_entrega_id` (nulo = livre, chega na Fase 8), `origem` (`INICIAL` | `CAPTURADO` | `EVOLUCAO`), `local_captura_id`, `capturado_em`.
+**PokemonInstancia** — `id`, `laboratorio_id`, `especie_id`, `apelido`, `nivel`, `experiencia`, `hp_atual_pct` (0..100, desgaste pós-expedição), `hp_atualizado_em` (marco da recuperação passiva, 4.8), `treinador_id` (nulo = está no viveiro do laboratório, 4.10), `comprometido_entrega_id` (nulo = livre, chega na Fase 8), `origem` (`INICIAL` | `CAPTURADO` | `EVOLUCAO`), `local_captura_id`, `capturado_em`.
 
 **Treinador** — `id`, `laboratorio_id`, `nome`, `avatar`, `nivel`, `experiencia`, `status` (`DISPONIVEL` | `EM_EXPEDICAO` | `EM_ENTREGA` | `DESCANSANDO`), `expedicoes_concluidas`, `entregas_concluidas`.
 
@@ -195,6 +195,8 @@ O nível do laboratório não é decorativo: ele define `limite_treinadores`, e 
 17. Uma expedição exige um treinador com **ao menos um Pokémon no time**.
 18. Um Pokémon em expedição não recupera HP; a recuperação passiva só corre no laboratório.
 19. O resultado de uma expedição é função apenas da semente e do estado gravado no envio.
+20. O viveiro comporta no máximo `CAPACIDADE_VIVEIRO` Pokémon; conta quem tem `treinador_id` nulo.
+21. Uma expedição nunca pode trazer mais capturas do que havia lugar no viveiro no momento do despacho.
 
 Não existe mais limite fixo de expedições simultâneas: o gargalo é o número de treinadores disponíveis, e portanto o nível do laboratório.
 
@@ -338,7 +340,7 @@ Só há tentativa de captura após vitória, e só se restar Pokébola na carga 
 
 ```
 capacidade_bagagem = CAPACIDADE_TOTAL_TREINADOR - tamanho_do_time
-slots_captura      = min(pokebolas_na_carga, capacidade_bagagem)
+slots_captura      = min(pokebolas_na_carga, capacidade_bagagem, espaco_livre_no_viveiro)
 
 p_captura = clamp(
     (taxa_captura / 255)
@@ -350,7 +352,7 @@ p_captura = clamp(
 
 Multiplicadores: Pokébola 1.0, Great Ball 1.5, Ultra Ball 2.0. Sucesso gera `CAPTURA`, consome a bola, cria a `PokemonInstancia` no laboratório ao fim da expedição e marca a Pokédex. Falha gera `CAPTURA_FALHA` e consome a bola.
 
-**O número de Pokémon capturáveis por expedição é limitado por `slots_captura`**: espaço livre na bagagem e Pokébolas na mochila. Com `CAPACIDADE_TOTAL_TREINADOR = 6`, um treinador com time cheio traz até 3 capturas; um treinador com um único Pokémon traz até 5.
+**O número de Pokémon capturáveis por expedição é limitado por `slots_captura`**: Pokébolas na mochila, espaço livre na bagagem e lugar no viveiro (4.10). Com `CAPACIDADE_TOTAL_TREINADOR = 6`, um treinador com time cheio traz até 3 capturas; um treinador com um único Pokémon traz até 5 — desde que haja onde guardar.
 
 Esse é um trade-off deliberado e não um efeito colateral. Time grande vence mais encontros e captura menos; time pequeno arrisca a expedição inteira em troca de capacidade. O professor escolhe entre render experiência e render Pokémon, e a escolha é dele a cada despacho.
 
@@ -394,7 +396,11 @@ A Central de Entregas é a fonte de moeda do jogo e o segundo uso para um treina
 
 **Regeração.** O professor pode descartar a lista e sortear outra, mas só a cada `INTERVALO_REGERAR_ENTREGAS` (15 minutos). O intervalo existe para que a escolha de qual entrega aceitar seja uma decisão, e não um botão de sorte girado até sair o pedido conveniente.
 
-**Aceite.** Exige os Pokémon pedidos disponíveis no laboratório — não em time, não em expedição, não comprometidos com outra entrega — e um treinador disponível. No aceite, os Pokémon ficam `comprometido_entrega_id` e o treinador vai para `EM_ENTREGA`.
+**Aceite.** O professor **escolhe quais Pokémon manda**, entre os que estão no viveiro (4.10) e atendem ao pedido. Não é automático: quando ele tem quatro Pidgey e o pedido quer dois, qual par sai é decisão dele — e é uma decisão de verdade, porque os níveis diferem e a recompensa paga por nível.
+
+Exige, então: os Pokémon escolhidos disponíveis no viveiro — não em time, não em expedição, não comprometidos com outra entrega — que satisfaçam exatamente espécie e quantidade do pedido, e um treinador livre. No aceite, os Pokémon ficam `comprometido_entrega_id` e o treinador vai para `EM_ENTREGA`.
+
+A interface precisa nomear quem vai embora antes de confirmar, porque a saída é definitiva.
 
 **Duração.** A entrega parte sempre do laboratório, porque é lá que os Pokémon estão. Não há exploração nem encontro: é só estrada, ida e volta.
 
@@ -416,6 +422,32 @@ exp_treinador   = EXP_TREINADOR_POR_ENTREGA
 ```
 
 Entregar longe paga mais. Entregar um Pokémon de nível alto paga mais — e é uma decisão de verdade, porque esse Pokémon poderia estar num time.
+
+### 4.10 O viveiro
+
+Os Pokémon que não estão no time de ninguém ficam no **viveiro** do laboratório — a instalação onde o professor mantém e cuida do que seus treinadores trouxeram de campo. É para lá que vai cada captura ao fim de uma expedição.
+
+O viveiro tem `CAPACIDADE_VIVEIRO` lugares, 50 na v1. Ocupam lugar os Pokémon com `treinador_id` nulo; os que estão num time viajam com o treinador e não contam. Um Pokémon comprometido com uma entrega continua ocupando o lugar dele até a entrega ser concluída — ele ainda está lá.
+
+**O limite morde na captura, não no retorno.** O número de capturas de uma expedição passa a ser:
+
+```
+slots_captura = min(pokebolas_na_carga, capacidade_bagagem, espaco_livre_no_viveiro)
+```
+
+Calculado **no despacho**, como tudo que alimenta a resolução (invariante 19), e o espaço considerado desconta o que as expedições já em curso podem trazer:
+
+```
+espaco_livre_no_viveiro = CAPACIDADE_VIVEIRO
+                        - pokemon_no_viveiro
+                        - soma dos slots_captura das expedições em curso
+```
+
+Essa reserva é o que impede três expedições simultâneas de voltarem juntas com mais Pokémon do que cabe. A alternativa — recusar a captura na hora de reclamar o relatório — foi descartada: o relatório já teria anunciado a captura e consumido a Pokébola, e desmentir o próprio relatório é a pior coisa que este sistema pode fazer.
+
+Cheio o viveiro, o treinador **para de capturar e continua registrando** na Pokédex, exatamente como já acontece com a bagagem cheia (invariante 11). O relatório diz qual dos dois limites mordeu.
+
+**O dreno é a entrega.** Ficar sem lugar não é bloqueio, é pressão: a Central de Entregas (Fase 8) existe para escoar o excedente, e agora tem um segundo motivo para o professor usá-la além da moeda. Expandir o viveiro com moedas entra junto com a loja, no backlog 10.3 — e é o primeiro uso de moeda que o jogador vai querer.
 
 ---
 
@@ -706,25 +738,32 @@ Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqu
 ---
 
 ### Fase 8 — Central de Entregas
-*A segunda ocupação de um treinador, e a origem da moeda.*
+*A segunda ocupação de um treinador, a origem da moeda, e o dreno do viveiro.*
 
-Depende da Fase 7: a entrega só faz sentido quando existem Pokémon capturados para entregar.
+Depende da Fase 7: a entrega só faz sentido quando existem Pokémon capturados para entregar. O **viveiro** (4.10) entra aqui junto, porque é ele que dá à entrega o segundo motivo de existir — sem limite de guarda, escoar Pokémon é só uma troca por moeda.
+
+Esta fase **volta ao código da Fase 7**: `slots_captura` passa a considerar o espaço livre no viveiro, e isso toca `game/capture.py`, o `ContextoDeResolucao` e o despacho. É alteração de regra num motor já fechado e testado — tarefa 8.1 por isso, antes de tudo.
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
-| 8.1 | Modelos `Entrega` e `EntregaRequisito`, campo `comprometido_entrega_id` em `PokemonInstancia`, migração | `pokelab-api` | — |
-| 8.2 | `game/delivery.py`: gerador de pedidos — 1 a 3 espécies distintas sorteadas do que o professor já viu, com peso maior para o já capturado, quantidade ponderada pela taxa de captura (questão 22), destino entre as cidades desbloqueadas | `pokelab-domain` | `pokelab-domain-rules` |
-| 8.3 | Duração da entrega (só travessia, ida e volta) e cálculo das recompensas em moeda e experiência | `pokelab-domain` | `pokelab-domain-rules` |
-| 8.4 | `GET /deliveries`: disponíveis, em curso e histórico, com o motivo de cada pedido inviável hoje | `pokelab-api` | `pokelab-api-conventions` |
-| 8.5 | `POST /deliveries/refresh`: regera a lista respeitando o intervalo de 15 minutos (invariante 15), devolvendo quanto falta quando recusa | `pokelab-api` | `pokelab-api-conventions` |
-| 8.6 | `POST /deliveries/{id}/accept`: valida Pokémon disponíveis e treinador livre, compromete os Pokémon, ocupa o treinador, grava `eta` | `pokelab-api` | `pokelab-domain-rules` |
-| 8.7 | `POST /deliveries/{id}/claim`: remove em definitivo os Pokémon entregues, credita moedas e experiência, libera o treinador | `pokelab-api` | `pokelab-domain-rules` |
-| 8.8 | Resolução preguiçosa idempotente, no mesmo padrão da expedição (Artigo VII) | `pokelab-api` | `pokelab-api-conventions` |
-| 8.9 | Tela Central de Entregas: pedidos com requisito, destino, duração estimada e recompensa; botão de regerar mostrando o tempo restante | `pokelab-frontend` | `pokelab-ui-kit` |
-| 8.10 | Confirmação explícita no aceite, nomeando quais Pokémon saem do laboratório para sempre | `pokelab-frontend` | `pokelab-ui-kit` |
-| 8.11 | Testes: pedido com 4 espécies rejeitado na geração; aceite sem Pokémon suficientes rejeitado; Pokémon comprometido fora de time e de expedição; regerar antes de 15 minutos recusado | `pokelab-test` | — |
+| 8.1 | **Viveiro**: `CAPACIDADE_VIVEIRO` em `balance.py`, ocupação e espaço livre com reserva das expedições em curso, `slots_captura` com o terceiro limite (4.10). Toca a Fase 7 | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.2 | Recusa de despacho e evento de relatório quando o viveiro está cheio, distinguindo do limite de bagagem | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.3 | `GET /ranch`: ocupação, capacidade e o que está guardado; ocupação no resumo do laboratório | `pokelab-api` | `pokelab-api-conventions` |
+| 8.4 | Modelos `Entrega` e `EntregaRequisito`, campo `comprometido_entrega_id` em `PokemonInstancia`, migração | `pokelab-api` | `pokelab-api-conventions` |
+| 8.5 | `game/delivery.py`: gerador de pedidos — 1 a 3 espécies distintas sorteadas do que o professor já viu, com peso maior para o já capturado, quantidade ponderada pela taxa de captura (questão 22), destino entre as cidades desbloqueadas. Pokédex vazia é caso de borda, não exceção | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.6 | Duração da entrega (só travessia, ida e volta) e cálculo das recompensas em moeda e experiência | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.7 | `GET /deliveries`: disponíveis, em curso e histórico, com o motivo de cada pedido inviável hoje | `pokelab-api` | `pokelab-api-conventions` |
+| 8.8 | `POST /deliveries/refresh`: regera a lista respeitando o intervalo de 15 minutos (invariante 15), devolvendo quanto falta quando recusa | `pokelab-api` | `pokelab-api-conventions` |
+| 8.9 | `POST /deliveries/{id}/accept`: recebe **os Pokémon escolhidos pelo professor**, valida espécie, quantidade e disponibilidade no viveiro, compromete os Pokémon, ocupa o treinador, grava `eta` | `pokelab-api` | `pokelab-domain-rules` |
+| 8.10 | `POST /deliveries/{id}/claim`: remove em definitivo os Pokémon entregues, credita moedas e experiência, libera o treinador e o lugar no viveiro | `pokelab-api` | `pokelab-domain-rules` |
+| 8.11 | Claim explícito e idempotente, no mesmo padrão da expedição (ADR-006 e Artigo VII). **Primeira operação destrutiva do jogo** — resolver duas vezes apagaria Pokémon que não deviam sair | `pokelab-api` | `pokelab-api-conventions` |
+| 8.12 | Tela do viveiro: ocupação, lista do que está guardado e aviso quando a captura vai ser limitada por falta de lugar | `pokelab-frontend` | `pokelab-ui-kit` |
+| 8.13 | Tela Central de Entregas: pedidos com requisito, destino, duração estimada e recompensa; botão de regerar mostrando o tempo restante | `pokelab-frontend` | `pokelab-ui-kit` |
+| 8.14 | Seleção dos Pokémon no aceite, com confirmação explícita nomeando quem sai do laboratório para sempre | `pokelab-frontend` | `pokelab-ui-kit` |
+| 8.15 | Testes do viveiro: captura limitada pelo lugar; três expedições simultâneas não estouram a capacidade; entrega devolve lugar | `pokelab-test` | — |
+| 8.16 | Testes da entrega: pedido com 4 espécies rejeitado na geração; aceite com Pokémon que não atende ao pedido rejeitado; Pokémon comprometido fora de time e de expedição; regerar antes de 15 minutos recusado; claim concorrente não apaga Pokémon duas vezes | `pokelab-test` | — |
 
-**Pronto quando:** o professor aceita um pedido, perde os Pokémon, ganha moeda e experiência de laboratório, e o treinador fica indisponível durante a viagem.
+**Pronto quando:** o professor vê o viveiro encher, escolhe quais Pokémon manda numa entrega, perde esses Pokémon, ganha moeda e experiência de laboratório, recupera o lugar no viveiro, e o treinador fica indisponível durante a viagem.
 
 ---
 
@@ -877,7 +916,9 @@ O invariante 5 e `limite_treinadores` já existem no domínio e na API desde a F
 
 ### 10.3 Loja
 
-A moeda já é paga pelas entregas (Fase 8) e não compra nada na v1. Vai comprar Poções e Pokébolas para mandar com o treinador, e treinadores novos. Preços saem dos dados de calibragem da Fase 9 — definir preço antes de conhecer a renda seria chutar duas vezes. Levantamento na tarefa 10.8.
+A moeda já é paga pelas entregas (Fase 8) e não compra nada na v1. Vai comprar Poções e Pokébolas para mandar com o treinador, treinadores novos, e **lugares no viveiro**. Preços saem dos dados de calibragem da Fase 9 — definir preço antes de conhecer a renda seria chutar duas vezes. Levantamento na tarefa 10.8.
+
+A expansão do viveiro é provavelmente a primeira compra que o jogador vai querer, e por isso merece cuidado: ela é a válvula que alivia a pressão que a Central de Entregas cria. Barata demais e o limite de 50 nunca é sentido; cara demais e o professor fica entalado sem saber o que fazer. O número sai da Fase 9, junto com a renda por entrega.
 
 ### 10.4 Evolução fora do nível
 
@@ -910,7 +951,7 @@ Pontos que não bloqueiam o início, mas precisam de decisão antes das fases in
 8. ~~Pokémon pode ser derrotado permanentemente?~~ **Só machucado.** `hp_atual_pct` chega a zero, o Pokémon fica nocauteado e se recupera passivamente no laboratório (4.8). Morte permanente num jogo de administração puniria o professor por uma rolagem que ele não vê.
 9. ~~Pokémon capturado vem com o nível de campo ou normalizado?~~ **O nível de campo.** Normalizar apagaria a única razão de mandar treinador para longe.
 10. ~~Evolui durante a expedição ou só no laboratório?~~ **Durante a expedição**, na resolução. O evento `EVOLUCAO` está no relatório desde o modelo de domínio; evoluir depois esvaziaria o relatório.
-11. ~~Há limite de armazenamento de Pokémon?~~ **Ilimitado na v1.** As entregas (Fase 8) são o dreno natural, e um "PC do Bill" entra se a calibragem da Fase 9 mostrar acúmulo que não escoa.
+11. ~~Há limite de armazenamento de Pokémon?~~ **Sim: o viveiro, com 50 lugares** (decidido 2026-11-07, revendo o "ilimitado" assumido na Fase 7). A seção 4.10 tem a regra. O limite entrou antes da calibragem porque muda o desenho, não o ajuste: sem ele a Central de Entregas teria só a moeda como motivo, e a escolha de qual Pokémon manter não existiria.
 
 **Antes da Fase 8**
 19. ~~Para que serve a moeda?~~ **Resolvido 2026-11-05: loja pós-v1.** A moeda vai comprar Poções e Pokébolas para mandar com o treinador, e novos treinadores. Na v1 ela apenas acumula — o professor vê o saldo crescer e a loja chega depois. Decisão deliberada: a economia de entrada (quanto cada entrega paga) pode ser calibrada na Fase 9 com dados reais antes de existir qualquer economia de saída, o que é a ordem certa.
