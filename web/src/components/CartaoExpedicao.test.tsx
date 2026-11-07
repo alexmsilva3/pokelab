@@ -162,3 +162,30 @@ describe('CartaoExpedicao', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+describe('botao de abortar', () => {
+  it('aparece enquanto a expedicao esta em curso', () => {
+    renderCartao({ estado_observado: 'EM_CURSO', segundos_restantes: 120 })
+
+    expect(screen.getByRole('button', { name: 'Abortar' })).toBeInTheDocument()
+  })
+
+  it('some quando o prazo vence, porque o servidor recusa abortar fora de EM_CURSO', () => {
+    // Regressao: o cartao escondia o botao so nos estados terminais, e
+    // AGUARDANDO_RELATORIO nao esta entre eles — vencido o prazo, "Abortar"
+    // seguia habilitado e o clique levava 409 do servidor.
+    renderCartao({ estado_observado: 'AGUARDANDO_RELATORIO', segundos_restantes: 0 })
+
+    expect(screen.queryByRole('button', { name: 'Abortar' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Receber relatorio' })).toBeInTheDocument()
+  })
+
+  it.each(['CONCLUIDA_SUCESSO', 'CONCLUIDA_FALHA', 'ABORTADA'] as const)(
+    'some no estado terminal %s',
+    (estado) => {
+      renderCartao({ estado_observado: estado, segundos_restantes: null })
+
+      expect(screen.queryByRole('button', { name: 'Abortar' })).not.toBeInTheDocument()
+    },
+  )
+})

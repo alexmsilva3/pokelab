@@ -739,6 +739,24 @@ button:disabled {
   max-width: 220px;
 }
 
+/* O estado selecionado ja viajava em aria-pressed — leitor de tela anunciava,
+   e a previa reagia —, mas nenhuma regra o desenhava: o professor clicava e nada
+   mudava na tela. Os cartoes de treinador, local e Pokemon usam so a borda de
+   acento; aqui o botao e pequeno e sem area propria, entao a borda sozinha e
+   facil de perder. O fundo invertido resolve sem animacao nenhuma. */
+.despacho-lista-opcoes button[aria-pressed='true'] {
+  border-color: var(--cor-acento);
+  background: var(--cor-acento);
+  color: var(--cor-acento-texto);
+  font-weight: 600;
+}
+
+.despacho-lista-opcoes button[aria-pressed='true']:disabled {
+  background: var(--cor-superficie);
+  color: var(--cor-texto);
+  border-color: var(--cor-acento);
+}
+
 .despacho-indisponivel {
   margin: 0;
   font-size: 0.8rem;

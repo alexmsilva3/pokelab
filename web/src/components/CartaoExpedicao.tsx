@@ -61,10 +61,17 @@ export function CartaoExpedicao({
   const [erroReceber, setErroReceber] = useState<string | null>(null)
   const emVooRef = useRef(false)
 
-  // A lista ja chega filtrada por `status=EM_CURSO` (a coluna crua, nao o
-  // estado observado): toda expedicao aqui ainda pode ser abortada, mesmo a
-  // que ja esta AGUARDANDO_RELATORIO — so o contador deixa de fazer sentido
-  // quando o prazo ja passou, por isso ele e exclusivo do EM_CURSO.
+  // Abortar e exclusivo do EM_CURSO, e a regra e do SERVIDOR:
+  // `services/expedicoes.abortar` recusa com 409 qualquer estado observado que
+  // nao seja EM_CURSO — AGUARDANDO_RELATORIO inclusive, porque a expedicao ja
+  // terminou e o que falta e colher o resultado, nao cancela-lo.
+  //
+  // Este comentario antes afirmava o contrario, e o botao seguia a afirmacao:
+  // vencido o prazo, "Abortar" continuava habilitado e o clique levava 409.
+  // Note a forma da condicao abaixo: o botao aparece para o UNICO estado que
+  // aceita a operacao, nao para todos menos os terminais. Enumerar quem pode e
+  // mais seguro que enumerar quem nao pode — um estado novo nasce sem permissao
+  // em vez de nascer com ela.
   const emCurso = expedicao.estado_observado === 'EM_CURSO'
   const aguardandoRelatorio = expedicao.estado_observado === 'AGUARDANDO_RELATORIO'
   const terminal = ESTADOS_TERMINAIS.has(expedicao.estado_observado)
@@ -143,7 +150,7 @@ export function CartaoExpedicao({
         </button>
       )}
 
-      {!terminal && (
+      {emCurso && (
         <button type="button" disabled={abortando} onClick={onAbortar}>
           {abortando ? 'Abortando...' : 'Abortar'}
         </button>
