@@ -171,6 +171,116 @@ describe('MontarTime', () => {
     })
   })
 
+  it('soltar um Pokemon do time pede confirmacao nomeando-o e encolhe o time (criterio 8 da spec 008)', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const pikachu = pokemonResumoExemplo({ id: 'poke-pikachu', nome: 'Pikachu', nivel: 7 })
+    const detalheAntes = treinadorDetalheExemplo({ id: 'treinador-1', nome: 'Ash', time: [pikachu] })
+    const detalheDepois = treinadorDetalheExemplo({ id: 'treinador-1', nome: 'Ash', time: [] })
+
+    let removido = false
+    const fetchMock = vi.fn((url: unknown, init?: RequestInit) => {
+      const caminho = String(url)
+      if (init?.method === 'DELETE') {
+        removido = true
+        return Promise.resolve(respostaJson(undefined, 204))
+      }
+      if (caminho.endsWith('/team/preview')) {
+        return Promise.resolve(respostaJson(previaTimeExemplo()))
+      }
+      if (caminho.includes('/pokemon?')) {
+        return Promise.resolve(
+          respostaJson(listaPokemonExemplo({ items: [], total: 0, page_size: 100 })),
+        )
+      }
+      if (/\/trainers\/[^/]+$/.test(caminho)) {
+        return Promise.resolve(respostaJson(removido ? detalheDepois : detalheAntes))
+      }
+      throw new Error(`Chamada inesperada no mock de fetch: ${caminho}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<MontarTime treinadorId="treinador-1" />)
+
+    expect(await screen.findByText('Time atual (1 / 3)')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Soltar' }))
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Pikachu (Nv. 7)'))
+
+    await waitFor(() => expect(screen.getByText('Time atual (0 / 3)')).toBeInTheDocument())
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) => String(url).includes('poke-pikachu') && init?.method === 'DELETE',
+      ),
+    ).toBe(true)
+
+    confirmSpy.mockRestore()
+  })
+
+  it('cancelar a confirmacao de soltar nao chama o DELETE', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const pikachu = pokemonResumoExemplo({ id: 'poke-pikachu', nome: 'Pikachu' })
+    const detalhe = treinadorDetalheExemplo({ id: 'treinador-1', nome: 'Ash', time: [pikachu] })
+
+    const fetchMock = montarFetchMock({ detalhe, livres: [] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<MontarTime treinadorId="treinador-1" />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Soltar' }))
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+    expect(screen.getByText('Time atual (1 / 3)')).toBeInTheDocument()
+
+    confirmSpy.mockRestore()
+  })
+
+  it('recusa do servidor ao soltar mostra a mensagem dele, sem alterar o time', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const pikachu = pokemonResumoExemplo({ id: 'poke-pikachu', nome: 'Pikachu' })
+    const detalhe = treinadorDetalheExemplo({ id: 'treinador-1', nome: 'Ash', time: [pikachu] })
+
+    const fetchMock = vi.fn((url: unknown, init?: RequestInit) => {
+      const caminho = String(url)
+      if (init?.method === 'DELETE') {
+        return Promise.resolve(
+          respostaJson(
+            {
+              erro: {
+                codigo: 'ULTIMO_POKEMON',
+                mensagem: 'O laboratorio nao pode ficar sem nenhum Pokemon.',
+              },
+            },
+            409,
+          ),
+        )
+      }
+      if (caminho.endsWith('/team/preview')) {
+        return Promise.resolve(respostaJson(previaTimeExemplo()))
+      }
+      if (caminho.includes('/pokemon?')) {
+        return Promise.resolve(
+          respostaJson(listaPokemonExemplo({ items: [], total: 0, page_size: 100 })),
+        )
+      }
+      if (/\/trainers\/[^/]+$/.test(caminho)) {
+        return Promise.resolve(respostaJson(detalhe))
+      }
+      throw new Error(`Chamada inesperada no mock de fetch: ${caminho}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<MontarTime treinadorId="treinador-1" />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Soltar' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'O laboratorio nao pode ficar sem nenhum Pokemon.',
+    )
+    expect(screen.getByText('Time atual (1 / 3)')).toBeInTheDocument()
+  })
+
   it('treinador ocupado mostra o motivo e nao oferece como alterar o time', async () => {
     const pikachu = pokemonResumoExemplo({ id: 'poke-pikachu', nome: 'Pikachu' })
     const detalhe = treinadorDetalheExemplo({

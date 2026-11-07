@@ -144,15 +144,17 @@ def obter_detalhe(
 def _pokemon_conhecidos(pokemon: Sequence[PokemonInstancia]) -> list[team.PokemonParaTime]:
     """Traduz as linhas lidas do banco para o vocabulario do dominio.
 
-    `comprometido_com_entrega` e sempre falso: a coluna `comprometido_entrega_id`
-    so existe a partir da Fase 8, e ate la nenhum Pokemon pode estar
-    reservado para uma entrega. Quando a coluna existir, esta linha vira
-    `pokemon.comprometido_entrega_id is not None` e nada mais muda aqui nem em
-    `game/team.py`.
+    `comprometido_com_entrega` passa a ler `comprometido_entrega_id` a partir
+    da Fase 8 (spec 008): um Pokemon reservado para uma entrega nao pode
+    entrar em time (invariante 14), e e `game.team.PokemonComprometido` quem
+    recusa — nenhuma regra nova aqui, so o dado real alimentando a mesma
+    checagem que ja existia.
     """
     return [
         team.PokemonParaTime(
-            id=item.id, treinador_id=item.treinador_id, comprometido_com_entrega=False
+            id=item.id,
+            treinador_id=item.treinador_id,
+            comprometido_com_entrega=item.comprometido_entrega_id is not None,
         )
         for item in pokemon
     ]
@@ -170,9 +172,18 @@ def definir_time(
 ) -> TrainerDetalhe:
     """Substituicao total do time, sob lock (Artigo VII, plan.md secao 5).
 
-    Trava a linha do treinador e as dos Pokemon envolvidos na mesma transacao
-    antes de validar: e o que impede dois `PUT` concorrentes em treinadores
-    diferentes de atribuirem o mesmo Pokemon aos dois.
+    Trava as linhas dos Pokemon envolvidos e a do treinador na mesma
+    transacao antes de validar: e o que impede dois `PUT` concorrentes em
+    treinadores diferentes de atribuirem o mesmo Pokemon aos dois.
+
+    Ordem de lock (Artigo VII): Pokemon antes do treinador, e o laboratorio
+    (quando a operacao precisa dele) sempre por ultimo — a ordem canonica do
+    projeto inteiro, documentada em `pokemon_service.soltar` e seguida
+    tambem por `entregas_service.aceitar/claim/refresh`. Invertida aqui, um
+    `PUT /trainers/{id}/team` e um `DELETE /pokemon/{id}` concorrentes sobre
+    o MESMO Pokemon (um no time do treinador que o outro esta travando)
+    travariam treinador-depois-Pokemon de um lado e Pokemon-depois-treinador
+    do outro: deadlock classico.
     """
     # As checagens que nao dependem do banco vem antes do lock: uma lista com
     # mil ids travaria mil linhas so para ser recusada por tamanho logo depois.
@@ -181,14 +192,15 @@ def definir_time(
     except team.ErroDeTime as erro:
         raise ConflitoDeTime(erro) from erro
 
-    treinador = treinadores_repo.travar_treinador(sessao, laboratorio_id, treinador_id)
-    if treinador is None:
-        raise RecursoNaoEncontrado()
-
     pokemon_envolvidos = treinadores_repo.travar_pokemon_envolvidos(
         sessao, laboratorio_id, treinador_id, pokemon_ids
     )
     pokemon_por_id = {item.id: item for item in pokemon_envolvidos}
+
+    treinador = treinadores_repo.travar_treinador(sessao, laboratorio_id, treinador_id)
+    if treinador is None:
+        sessao.rollback()
+        raise RecursoNaoEncontrado()
 
     try:
         time_validado = team.validar_time(

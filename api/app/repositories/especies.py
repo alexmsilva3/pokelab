@@ -30,6 +30,17 @@ def buscar_iniciais(sessao: Session) -> list[PokemonEspecie]:
     )
 
 
+def listar_todas(sessao: Session) -> list[PokemonEspecie]:
+    """As 151 especies do seed, em qualquer ordem estavel (Fase 8, spec 008).
+
+    O gerador de entregas (`game.delivery.candidatas_do_nivel`) precisa do
+    catalogo inteiro para montar a banda de raridade: a Pokedex do laboratorio
+    NAO participa do filtro (SDD 4.9), entao nao ha WHERE por laboratorio
+    aqui — e a mesma tabela de referencia para qualquer professor.
+    """
+    return list(sessao.scalars(select(PokemonEspecie).order_by(PokemonEspecie.id)))
+
+
 def buscar_catalogo(sessao: Session, especie_ids: Iterable[int]) -> dict[int, PokemonEspecie]:
     """As especies pedidas MAIS toda a cadeia de evolucao delas (spec 007).
 

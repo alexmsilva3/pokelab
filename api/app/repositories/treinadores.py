@@ -136,6 +136,22 @@ def concluir_expedicao(treinador: Treinador, *, nivel: int, experiencia: int) ->
     treinador.expedicoes_concluidas += 1
 
 
+def despachar_para_entrega(treinador: Treinador) -> None:
+    """Poe o treinador EM_ENTREGA (regra 20 da spec 008, aceite)."""
+    treinador.status = StatusTreinador.EM_ENTREGA.value
+
+
+def concluir_entrega(treinador: Treinador, *, nivel: int, experiencia: int) -> None:
+    """Fecha o ciclo da entrega (criterio 26 da spec 008): libera o
+    treinador, grava a progressao que `game.trainers` ja calculou e soma mais
+    uma entrega concluida ao historico dele. Mesmo papel de
+    `concluir_expedicao`, para o segundo uso do treinador."""
+    treinador.status = StatusTreinador.DISPONIVEL.value
+    treinador.nivel = nivel
+    treinador.experiencia = experiencia
+    treinador.entregas_concluidas += 1
+
+
 def _pokemon_envolvidos(
     laboratorio_id: uuid.UUID, treinador_id: uuid.UUID, pokemon_ids: Sequence[uuid.UUID]
 ) -> Select:

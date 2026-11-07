@@ -148,8 +148,16 @@ class PokemonInstancia(Base):
     local_captura_id: Mapped[str | None] = mapped_column(String(50), ForeignKey("locais.id"))
     capturado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # `comprometido_entrega_id` do SDD 3.2 entra na Fase 8, junto da tabela
-    # `entregas`: nao ha o que referenciar ainda.
+    # Entrega que reservou este Pokemon (Fase 8, invariante 14 do SDD 3.3).
+    # Nulo = livre. Ele CONTINUA ocupando lugar no viveiro ate a entrega ser
+    # concluida (game.viveiro.PokemonDoLaboratorio.no_viveiro so olha para
+    # `treinador_id`): a reserva nao move o Pokemon, so o marca. Sem
+    # relationship de volta de proposito — nenhum schema precisa navegar
+    # daqui ate a `Entrega`, so o contrario (ver `Entrega.pokemon_comprometidos`
+    # mais abaixo), e um FK unidirecional e o suficiente.
+    comprometido_entrega_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("entregas.id")
+    )
 
     # Relacionamentos de leitura para a ficha e a listagem (spec 003). Lazy
     # "select" por padrao: quem lista em volume usa `joinedload`/`selectinload`
@@ -396,3 +404,108 @@ class ExpedicaoEvento(Base):
 
     def __repr__(self) -> str:
         return f"<ExpedicaoEvento {self.id} expedicao={self.expedicao_id} tipo={self.tipo}>"
+
+
+class Entrega(Base):
+    """Um pedido da Central de Entregas (SDD 3.2 e 4.9, spec 008).
+
+    `status` guarda so o que e FATO GRAVADO: `DISPONIVEL` | `EM_CURSO` |
+    `CONCLUIDA` | `DESCARTADA` (`game.delivery.StatusEntrega`). `EXPIRADA`
+    nao e valor de coluna — e derivado de `expira_em` contra o relogio em
+    `game.delivery.estado_observado_entrega`, o terceiro uso do padrao de
+    `AGUARDANDO_RELATORIO` na expedicao.
+
+    `treinador_id`, `started_at`, `eta`, `duracao_minutos` e as tres colunas
+    de recompensa nascem nulas e so sao gravadas no ACEITE (tarefa 13 da spec
+    008): e ali que o treinador e os Pokemon escolhidos ficam conhecidos, e e
+    esse par que decide tanto o desconto de viagem quanto o nivel de cada
+    Pokemon entregue. A CONCLUSAO (claim, tarefa 14) so LE o que o aceite ja
+    gravou — nunca recalcula — pelo mesmo motivo do `relatorio_resumo` da
+    expedicao (ADR-006): o valor tem que continuar sendo o que o professor viu
+    ao aceitar, mesmo que o treinador suba de nivel depois.
+
+    `expira_em` e o prazo da OFERTA, nunca da missao (SDD 4.9): deixa de
+    importar a partir do aceite, porque `StatusEntrega.aceita_prazo_da_oferta`
+    so e verdadeiro em `DISPONIVEL`.
+    """
+
+    __tablename__ = "entregas"
+    __table_args__ = (
+        # GET /deliveries filtra por laboratorio e normalmente quer separar
+        # por status (ex.: so as validas), mesmo padrao do indice de
+        # `expedicoes`.
+        Index("ix_entregas_laboratorio_status", "laboratorio_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    laboratorio_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("laboratorios.id"), nullable=False
+    )
+    titulo: Mapped[str] = mapped_column(String(160), nullable=False)
+    local_destino_id: Mapped[str] = mapped_column(ForeignKey("locais.id"), nullable=False)
+
+    # DISPONIVEL | EM_CURSO | CONCLUIDA | DESCARTADA (game.delivery.StatusEntrega)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DISPONIVEL")
+
+    # Nulo enquanto disponivel: so ganha dono no aceite (regra 20 da spec 008).
+    treinador_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("treinadores.id")
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    eta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolvida_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    duracao_minutos: Mapped[int | None] = mapped_column(Integer)
+    recompensa_moedas: Mapped[int | None] = mapped_column(Integer)
+    recompensa_exp_laboratorio: Mapped[int | None] = mapped_column(Integer)
+    recompensa_exp_treinador: Mapped[int | None] = mapped_column(Integer)
+
+    gerada_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expira_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # O resumo da CONCLUSAO (tarefa 14, ADR-006): pokemon entregues (nome e
+    # nivel), e o antes-e-depois de nivel/experiencia de laboratorio e de
+    # treinador NESTA entrega. Gravado uma unica vez no `claim` e so lido
+    # depois — nunca recalculado —, pelo mesmo motivo de
+    # `Expedicao.relatorio_resumo`: os Pokemon entregues deixam de existir
+    # (regra 24), entao uma segunda leitura nao tem de onde tirar os nomes de
+    # novo, e o nivel de laboratorio/treinador "antes desta entrega" muda a
+    # cada expedicao ou entrega posterior. Nulo ate a entrega concluir.
+    resultado_resumo: Mapped[dict | None] = mapped_column(JSONB)
+
+    local_destino: Mapped[Local] = relationship(Local)
+    treinador: Mapped[Treinador | None] = relationship(Treinador)
+    requisitos: Mapped[list[EntregaRequisito]] = relationship(
+        "EntregaRequisito", back_populates="entrega", order_by="EntregaRequisito.especie_id"
+    )
+    # So-leitura, sem `back_populates`: `PokemonInstancia.comprometido_entrega_id`
+    # e um FK unidirecional de proposito (ver o comentario la). Uma unica
+    # relationship tocando esta coluna nao cria o aviso de sobreposicao que
+    # duas relationships na mesma FK produziriam.
+    pokemon_comprometidos: Mapped[list[PokemonInstancia]] = relationship(
+        "PokemonInstancia",
+        foreign_keys="PokemonInstancia.comprometido_entrega_id",
+        viewonly=True,
+        order_by="PokemonInstancia.id",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Entrega {self.id} status={self.status}>"
+
+
+class EntregaRequisito(Base):
+    """Uma linha do pedido: tantos de tal especie (SDD 3.2). No maximo tres por entrega."""
+
+    __tablename__ = "entrega_requisitos"
+
+    entrega_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("entregas.id"), primary_key=True
+    )
+    especie_id: Mapped[int] = mapped_column(ForeignKey("pokemon_especies.id"), primary_key=True)
+    quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    entrega: Mapped[Entrega] = relationship(Entrega, back_populates="requisitos")
+    especie: Mapped[PokemonEspecie] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<EntregaRequisito {self.entrega_id}/{self.especie_id}={self.quantidade}>"

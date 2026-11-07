@@ -393,11 +393,15 @@ def _fracao(valor: float) -> Fraction:
     return Fraction(str(valor))
 
 
-def _desconto_do_treinador(nivel_treinador: int | None) -> Fraction:
+def desconto_do_treinador(nivel_treinador: int | None) -> Fraction:
     """1 - min(nivel * REDUCAO_POR_NIVEL_TREINADOR, REDUCAO_MAXIMA_TREINADOR).
 
     Sem treinador informado nao ha desconto: e a estimativa base que o mapa
     mostra antes de o professor escolher quem mandar.
+
+    Publica desde a Fase 8: a duracao da entrega (`delivery.duracao_da_entrega`)
+    aplica o MESMO desconto, e duas copias da formula divergiriam na primeira
+    calibragem da Fase 9.
     """
     if nivel_treinador is None:
         return Fraction(1)
@@ -464,7 +468,7 @@ def duracao_estimada(
     # ate a Fase 5, e seguir o texto deixava a expedicao cem vezes mais longa
     # em desenvolvimento. O documento e que foi corrigido.
     ajustada = (
-        bruta * _desconto_do_treinador(nivel_treinador) * _desconto_dos_itens(bonus_itens)
+        bruta * desconto_do_treinador(nivel_treinador) * _desconto_dos_itens(bonus_itens)
     ) * _fracao(escala)
     return max(balance.DURACAO_MINIMA_MINUTOS, round(ajustada))
 

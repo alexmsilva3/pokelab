@@ -23,6 +23,12 @@ class ResumoLaboratorio:
     locais_desbloqueados: int
     especies_vistas: int
     especies_capturadas: int
+    # Tarefa 9 da spec 008 (criterios 1 e 2): a ocupacao do viveiro tambem
+    # aparece no resumo do `GET /me`, nao so no `GET /ranch` dedicado — mesma
+    # contagem de `pokemon_repo.contar_viveiro`/`game.viveiro.ocupacao`
+    # (Pokemon com `treinador_id` nulo), so que encaixada nesta MESMA
+    # consulta para nao custar uma ida a mais ao banco.
+    ocupacao_viveiro: int
 
 
 def _contagem(modelo, laboratorio_id: uuid.UUID, *condicoes):
@@ -43,6 +49,7 @@ def contar(sessao: Session, laboratorio_id: uuid.UUID) -> ResumoLaboratorio:
             _contagem(LocalDesbloqueado, laboratorio_id),
             _contagem(PokedexEntrada, laboratorio_id, PokedexEntrada.visto.is_(True)),
             _contagem(PokedexEntrada, laboratorio_id, PokedexEntrada.capturado.is_(True)),
+            _contagem(PokemonInstancia, laboratorio_id, PokemonInstancia.treinador_id.is_(None)),
         )
     ).one()
     return ResumoLaboratorio(
@@ -51,4 +58,5 @@ def contar(sessao: Session, laboratorio_id: uuid.UUID) -> ResumoLaboratorio:
         locais_desbloqueados=linha[2],
         especies_vistas=linha[3],
         especies_capturadas=linha[4],
+        ocupacao_viveiro=linha[5],
     )

@@ -259,7 +259,31 @@ CAPACIDADE_TOTAL_TREINADOR: Final[int] = 6
 LIMITE_TREINADORES_NIVEL_1: Final[int] = 3
 TREINADORES_POR_NIVEL_LABORATORIO: Final[int] = 1  # acrescidos a cada nivel
 
-# --- Entregas (SDD 4.8) ----------------------------------------------------
+# --- Viveiro (SDD 4.10, spec 008) ------------------------------------------
+
+# Lugares do viveiro, em Pokemon. Ocupam lugar os que tem `treinador_id` nulo;
+# quem esta num time viaja com o treinador e nao conta (invariante 20).
+#
+# Cinquenta na v1, e o numero sai de uma conta de ritmo: um treinador traz no
+# maximo CAPACIDADE_TOTAL_TREINADOR menos o time por expedicao — de 3 a 5 —, e
+# os TREINADORES_NO_KIT_INICIAL rodam juntos. A duas capturas por expedicao e
+# tres expedicoes por rodada, o viveiro enche em cerca de oito rodadas: tempo
+# de sobra para montar times e abrir o mapa, e curto o bastante para a Central
+# de Entregas ter o que escoar antes de o jogo virar acumulo sem decisao.
+#
+# O limite NAO morde na captura. Ele transborda de proposito (SDD 4.10) e o
+# unico caminho que ele fecha e o despacho de expedicao nova.
+CAPACIDADE_VIVEIRO: Final[int] = 50
+
+# Quantos Pokemon o laboratorio precisa manter para continuar jogavel
+# (invariante 25), em Pokemon. Nao e calibragem: e a condicao de nao haver beco
+# sem saida permanente. Sem Pokemon nao ha time, sem time nao ha expedicao e
+# sem expedicao nao ha como obter outro — e os iniciais sao concedidos uma vez
+# so (invariante 10), entao essa porta nao reabre. Calibrar o jogo nunca
+# significa mexer neste numero.
+POKEMON_MINIMOS_NO_LABORATORIO: Final[int] = 1
+
+# --- Entregas (SDD 4.9) ----------------------------------------------------
 
 ENTREGAS_DISPONIVEIS: Final[int] = 3  # pedidos na lista ao mesmo tempo
 ESPECIES_MAXIMAS_POR_ENTREGA: Final[int] = 3
@@ -271,10 +295,48 @@ QUANTIDADE_MAXIMA_POR_ESPECIE: Final[int] = 3
 DIVISOR_QUANTIDADE_POR_CAPTURA: Final[int] = 85
 INTERVALO_REGERAR_ENTREGAS_MINUTOS: Final[int] = 15
 
-# Peso relativo no sorteio: especie ja capturada aparece mais que a so avistada,
-# para a lista ter pedidos atendiveis hoje e alguns que valem como objetivo.
-PESO_ESPECIE_CAPTURADA: Final[int] = 4
-PESO_ESPECIE_AVISTADA: Final[int] = 1
+# PESO_ESPECIE_CAPTURADA e PESO_ESPECIE_AVISTADA sairam daqui na Fase 8. Elas
+# vinham de uma versao da regra em que a Pokedex ponderava o sorteio do pedido;
+# o SDD 4.9 decidiu o contrario — a Pokedex NAO participa da geracao, porque
+# sortear do que o professor ja viu faria da Central um laco fechado. Constante
+# orfa em balance.py e armadilha de calibragem: a Fase 9 mexeria num numero que
+# nao alimenta formula nenhuma.
+
+# Banda de raridade do pedido (SDD 4.9). A escala de `taxa_captura` anda ao
+# contrario da intuicao: 3 e Mewtwo (raro) e 255 e Caterpie (comum), com
+# mediana em 75 nas 151 especies do seed. TAXA ALTA E ESPECIE COMUM.
+#
+# Por isso a banda do laboratorio e `[piso, TAXA_CAPTURA_MAXIMA]` e o piso
+# DESCE conforme o nivel sobe. TAXA_CAPTURA_MAXIMA ja esta declarada na secao
+# de Captura e e reaproveitada como teto da banda: e a mesma escala.
+TAXA_CAPTURA_MINIMA: Final[int] = 3  # Mewtwo, o fundo da escala do seed
+
+# Em que nivel de laboratorio a banda chega ao fundo da escala e passa a
+# alcancar qualquer especie. Dez porque e o horizonte da v1: com
+# EXP_LAB_POR_EXPEDICAO e EXP_LAB_POR_ENTREGA, o nivel 10 e uma meta de campanha
+# inteira, e abrir a banda toda antes disso esgotaria o unico eixo de
+# progressao que o nivel do laboratorio tem na Central. O degrau que sai dai e
+# de 28 pontos de taxa por nivel: nivel 1 alcanca so a taxa 255, nivel 3 ja
+# alcanca Pikachu e Psyduck (190), nivel 8 passa da mediana (75).
+NIVEL_LABORATORIO_BANDA_TOTAL: Final[int] = 10
+
+# Minutos de jogo que uma oferta fica aceitavel antes de vencer (regra 16 da
+# spec 008). A conta que fixa o numero:
+#
+#   o prazo precisa SOBREVIVER A UMA EXPEDICAO LONGA, senao o pedido nunca foi
+#   oferta de verdade — o professor leria "preciso de dois Pidgey", despacharia
+#   um treinador para Route 1 e encontraria a oferta vencida na volta. A
+#   expedicao mais longa que o mapa de Kanto da v1 permite e Mt. Moon partindo
+#   de Pallet Town: 55 minutos. Noventa minutos cobrem essa ida, a volta do
+#   relatorio e a folga de o professor nao estar na tela no instante exato.
+#
+#   e precisa VENCER, senao a lista empaca: tres pedidos que ele nao consegue
+#   atender hoje ficariam ali para sempre e a Central viraria tela morta.
+#
+# Em tempo real: 1h30. Com EXPEDITION_TIME_SCALE = 0.01 em desenvolvimento,
+# 54 segundos — tempo de ver a oferta vencer sem esperar pela tarde inteira.
+# Como toda duracao do jogo, a escala MULTIPLICA (ADR-004).
+VALIDADE_ENTREGA_MINUTOS: Final[int] = 90
 
 MULTIPLICADOR_IDA_E_VOLTA: Final[float] = 2.0
 

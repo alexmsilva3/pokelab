@@ -93,6 +93,10 @@ class ResumoLer(BaseModel):
     locais_desbloqueados: int
     especies_vistas: int
     especies_capturadas: int
+    # Tarefa 9 da spec 008 (criterios 1 e 2): a mesma ocupacao do `GET
+    # /ranch`, para o cabecalho do perfil nao depender de uma segunda
+    # chamada so para mostrar "quantos lugares estao ocupados no viveiro".
+    ocupacao_viveiro: int
 
 
 class SessaoLer(BaseModel):

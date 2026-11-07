@@ -57,6 +57,18 @@ def buscar_linhas_de_encontro(sessao: Session, local_id: str) -> list[LocalEncon
     )
 
 
+def listar_todos_os_encontros(sessao: Session) -> list[LocalEncontro]:
+    """Toda a tabela `local_encontros`, de qualquer local (Fase 8, spec 008).
+
+    O gerador de entregas precisa saber ONDE cada especie candidata aparece
+    para aplicar o filtro de alcancavel (`game.delivery.candidatas_do_nivel`):
+    uma consulta so, em vez de uma por especie ou uma por local — o catalogo
+    inteiro de encontros nunca passa de algumas centenas de linhas no seed da
+    v1 (dez locais).
+    """
+    return list(sessao.scalars(select(LocalEncontro).order_by(LocalEncontro.especie_id)))
+
+
 def desbloquear(
     sessao: Session, laboratorio_id: uuid.UUID, local_id: str, desbloqueado_em: datetime
 ) -> bool:

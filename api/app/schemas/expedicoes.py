@@ -44,6 +44,7 @@ TipoDeEventoLer = Literal[
     "BATALHA",
     "CAPTURA",
     "CAPTURA_FALHA",
+    "BAGAGEM_CHEIA",
     "DESCOBERTA",
     "ITEM",
     "CONTRATEMPO",

@@ -229,6 +229,37 @@ def texto_de_descoberta(variacao: int, *, especie: str, local: str) -> str:
     return _frase(_DESCOBERTA, variacao, especie=especie, local=local)
 
 
+_BAGAGEM_CHEIA: Final[tuple[str, ...]] = (
+    "A bagagem de {treinador} ficou cheia com {capturados}: "
+    "sem espaco, o que vier agora so vira registro na Pokedex.",
+    "{treinador} nao tem mais onde por nada, com {capturados} na bagagem: "
+    "daqui em diante o encontro rende so anotacao na Pokedex.",
+)
+
+
+def texto_de_bagagem_cheia(variacao: int, *, treinador: str, capturados: int) -> str:
+    """Evento BAGAGEM_CHEIA: o momento em que a bagagem encheu.
+
+    Existe porque o silencio enganava. Com a bagagem cheia no terceiro de
+    cinco encontros, o relatorio mostrava duas batalhas vencidas sem nenhuma
+    captura, e o professor nao tinha como distinguir "nao coube" de "a rolagem
+    foi ruim" — duas situacoes que pedem decisoes opostas, levar um time menor
+    ou levar mais bolas.
+
+    A frase e escrita no estado, e nao no futuro: "ficou cheia" vale mesmo
+    quando a captura que encheu foi a do ultimo encontro e nada mais chegou a
+    acontecer. Ela tambem diz o que CONTINUA acontecendo — o registro na
+    Pokedex segue (invariante 11) —, porque sem essa metade o professor leria
+    o resto da expedicao como perdido.
+    """
+    return _frase(
+        _BAGAGEM_CHEIA,
+        variacao,
+        treinador=treinador,
+        capturados=contagem(capturados, "Pokemon capturado", "Pokemon capturados"),
+    )
+
+
 # --- Achado, nivel e evolucao -----------------------------------------------
 
 _ITEM: Final[tuple[str, ...]] = (

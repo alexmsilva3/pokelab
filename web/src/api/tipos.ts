@@ -467,16 +467,20 @@ export interface PreviaExpedicao {
 // --- Relatorio de campo (spec 007) ----------------------------------------
 
 /**
- * Uniao fechada em dez valores (specs/007-relatorio-de-campo/plan.md). O JSON
- * que chega em tempo de execucao nao e garantido pelo compilador: um tipo de
- * evento novo que o servidor venha a mandar amanha passa por aqui como string
- * qualquer, e `lib/relatorios.ts` tem default para nao quebrar a tela.
+ * Uniao fechada em onze valores (specs/007-relatorio-de-campo/plan.md,
+ * acrescida de `BAGAGEM_CHEIA` na Fase 8, specs/008-central-de-entregas). O
+ * JSON que chega em tempo de execucao nao e garantido pelo compilador: um
+ * tipo de evento novo que o servidor venha a mandar amanha passa por aqui
+ * como string qualquer, e `lib/relatorios.ts` tem default para nao quebrar a
+ * tela. Espelha exatamente `game/expedition.py::TipoDeEvento` e
+ * `schemas/expedicoes.py::TipoDeEventoLer` — os dois lados devem mudar juntos.
  */
 export type TipoDeEvento =
   | 'PARTIDA'
   | 'BATALHA'
   | 'CAPTURA'
   | 'CAPTURA_FALHA'
+  | 'BAGAGEM_CHEIA'
   | 'DESCOBERTA'
   | 'ITEM'
   | 'CONTRATEMPO'
@@ -584,4 +588,126 @@ export interface RelatorioDeCampo {
 export interface RespostaClaimExpedicao {
   expedicao: ExpedicaoLer
   relatorio: RelatorioDeCampo
+}
+
+// --- Viveiro e Central de Entregas (spec 008) -----------------------------
+
+/**
+ * Corpo de `GET /ranch` (plan.md). `items` e a mesma `PokemonResumo` de
+ * `GET /pokemon`: o viveiro nao inventa um formato proprio de linha so para
+ * listar o que ja guarda. `lugares_faltando` e sempre 0 quando `transbordado`
+ * e falso — nunca um numero negativo representando folga.
+ */
+export interface Viveiro {
+  capacidade: number
+  ocupacao: number
+  transbordado: boolean
+  lugares_faltando: number
+  items: PokemonResumo[]
+}
+
+/**
+ * `EXPIRADA` nao e coluna (plan.md, mesmo padrao de `AGUARDANDO_RELATORIO`):
+ * o servidor deriva contra o relogio a cada leitura. `EM_CURSO` aqui e a
+ * entrega ACEITA viajando — nao confundir com `EstadoObservadoExpedicao`, que
+ * e outra maquina de estados.
+ */
+export type EstadoObservadoEntrega = 'DISPONIVEL' | 'EXPIRADA' | 'EM_CURSO' | 'CONCLUIDA' | 'DESCARTADA'
+
+/**
+ * Uma linha de requisito de um pedido (plan.md). `disponiveis_no_viveiro` ja
+ * vem contado pelo servidor — a tela nunca soma quantos Pokemon da especie
+ * existem no acervo por conta propria.
+ */
+export interface RequisitoLer {
+  especie_id: number
+  especie_nome: string
+  quantidade: number
+  disponiveis_no_viveiro: number
+}
+
+/**
+ * Linha de `GET /deliveries` e de `POST /deliveries/refresh` (plan.md).
+ * `segundos_para_expirar` so existe quando `estado_observado` e `DISPONIVEL`
+ * — nula para qualquer outro estado, do mesmo jeito que
+ * `ExpedicaoResumo.segundos_restantes` zera em estado terminal.
+ * `eta`, `segundos_restantes` e `treinador_id` so existem a partir do aceite
+ * (`EM_CURSO` em diante); nulos enquanto `DISPONIVEL` ou `EXPIRADA`.
+ * `motivo` e o texto que o SERVIDOR escreveu explicando por que o pedido nao
+ * e atendivel hoje (por exemplo, faltam Pokemon da especie no viveiro) — a
+ * tela exibe sem reescrever, como em `PreviaExpedicao.motivo`.
+ * `duracao_minutos` e as tres recompensas sao uma PREVIA enquanto
+ * `DISPONIVEL` (estimada com os Pokemon do viveiro que atendem hoje) e o
+ * valor REAL, gravado no aceite, a partir de `EM_CURSO`. Nulos quando nao ha
+ * base para a previa (pedido nao atendivel) — a tela nao inventa um numero
+ * onde o servidor nao calculou nenhum, do mesmo jeito que `PreviaExpedicao`.
+ */
+export interface EntregaLer {
+  id: string
+  titulo: string
+  local_destino_id: string
+  local_destino_nome: string
+  estado_observado: EstadoObservadoEntrega
+  segundos_para_expirar: number | null
+  requisitos: RequisitoLer[]
+  atendivel: boolean
+  motivo: string | null
+  duracao_minutos: number | null
+  recompensa_moedas: number | null
+  recompensa_exp_laboratorio: number | null
+  recompensa_exp_treinador: number | null
+  eta: string | null
+  segundos_restantes: number | null
+  treinador_id: string | null
+}
+
+/**
+ * Resposta de `GET /deliveries` e de `POST /deliveries/refresh` (mesmo
+ * corpo, plan.md). `segundos_para_regerar` e 0 quando a lista valida ja pode
+ * ser descartada sem espera — nunca negativo, e distinto de
+ * `segundos_para_expirar` de cada pedido: um conta o prazo da OFERTA, o outro
+ * conta quanto falta para a REGERACAO da lista inteira.
+ */
+export interface RespostaEntregas {
+  items: EntregaLer[]
+  vagas_para_repor: number
+  segundos_para_regerar: number
+}
+
+/** Corpo de `POST /deliveries/{id}/accept` (plan.md): os Pokemon escolhidos pelo professor. */
+export interface AceiteEntregaEntrada {
+  treinador_id: string
+  pokemon_ids: string[]
+}
+
+/** Uma linha de `resultado.pokemon_entregues` (plan.md): so o essencial para nomear quem saiu. */
+export interface PokemonEntregueNoResultado {
+  especie_nome: string
+  nivel: number
+}
+
+/**
+ * Corpo de `resultado` em `POST /deliveries/{id}/claim` (plan.md).
+ * `laboratorio` e `treinador` reaproveitam a mesma forma de
+ * `GanhoDeExperiencia` do relatorio de campo (spec 007) — o ganho de nivel e
+ * experiencia e a mesma ideia nos dois lugares.
+ */
+export interface ResultadoDeEntrega {
+  pokemon_entregues: PokemonEntregueNoResultado[]
+  moedas_ganhas: number
+  moedas_total: number
+  laboratorio: GanhoDeExperiencia
+  treinador: GanhoDeExperiencia
+  lugares_liberados: number
+}
+
+/**
+ * Resposta de `POST /deliveries/{id}/claim` (plan.md). Uma segunda chamada
+ * sobre a mesma entrega devolve o mesmo corpo sem escrever nada de novo
+ * (Artigo VII, idempotencia) — a tela pode tratar a resposta sempre do mesmo
+ * jeito, resolva ela agora ou so releia o que ja existia.
+ */
+export interface RespostaClaimEntrega {
+  entrega: EntregaLer
+  resultado: ResultadoDeEntrega
 }

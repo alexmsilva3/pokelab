@@ -58,6 +58,9 @@ def test_registro_com_usuario_livre_cria_conta_laboratorio_e_kit_completo(sessao
     assert resumo["treinadores"] == balance.TREINADORES_NO_KIT_INICIAL
     assert resumo["locais_desbloqueados"] == 1
     assert resumo["especies_capturadas"] == 3
+    # Tarefa 9 da spec 008: o kit inicial solta os tres no viveiro, nenhum
+    # em time ainda, entao a ocupacao do resumo bate com o total.
+    assert resumo["ocupacao_viveiro"] == 3
 
 
 # --- Criterio 2 --------------------------------------------------------------

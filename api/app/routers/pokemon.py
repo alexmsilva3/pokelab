@@ -90,3 +90,18 @@ def renomear_pokemon(
     return pokemon_service.atualizar_apelido(
         sessao, sessao_professor.laboratorio.id, pokemon_id, dados.apelido
     )
+
+
+@router.delete("/{pokemon_id}", status_code=204)
+def soltar_pokemon(
+    pokemon_id: uuid.UUID,
+    sessao_professor: SessaoProfessor = Depends(professor_atual),
+    sessao: Session = Depends(get_db),
+) -> None:
+    """Devolve o Pokemon a natureza (spec 008): sem soft delete, sem recompensa.
+
+    Recusas 409: `POKEMON_EM_EXPEDICAO`, `TREINADOR_OCUPADO`,
+    `POKEMON_COMPROMETIDO`, `ULTIMO_POKEMON`. Pokemon de outro laboratorio:
+    404, nunca 403 (criterios 9 a 11).
+    """
+    pokemon_service.soltar(sessao, sessao_professor.laboratorio.id, pokemon_id)

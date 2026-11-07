@@ -22,6 +22,8 @@ export function rotuloTipoEvento(tipo: TipoDeEvento | string): string {
       return 'Captura'
     case 'CAPTURA_FALHA':
       return 'Captura falhou'
+    case 'BAGAGEM_CHEIA':
+      return 'Bagagem cheia'
     case 'DESCOBERTA':
       return 'Descoberta'
     case 'ITEM':
@@ -55,6 +57,8 @@ export function marcadorTipoEvento(tipo: TipoDeEvento | string): string {
       return '*'
     case 'CAPTURA_FALHA':
       return 'x'
+    case 'BAGAGEM_CHEIA':
+      return '!'
     case 'DESCOBERTA':
       return '?'
     case 'ITEM':

@@ -12,10 +12,13 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from app.game.delivery import ErroDeEntrega as _ErroDeEntregaNoDominio
 from app.game.expedition import ErroDeExpedicao as _ErroDeExpedicaoNoDominio
 from app.game.mapa import DestinoForaDeAlcance as _DestinoForaDeAlcanceNoDominio
 from app.game.mapa import LocalDesconhecido as _LocalDesconhecidoNoDominio
+from app.game.soltar import ErroDeSoltura as _ErroDeSolturaNoDominio
 from app.game.team import ErroDeTime
+from app.game.viveiro import ErroDeViveiro as _ErroDeViveiroNoDominio
 
 
 # N818 pede sufixo "Error"; o Artigo X manda nomear o dominio da aplicacao em
@@ -182,3 +185,135 @@ class ExpedicaoNaoEstaEmCurso(ErroDeAplicacao):
     mensagem_padrao: ClassVar[str] = (
         "Esta expedicao ja nao esta em curso e por isso nao pode ser abortada."
     )
+
+
+# --- Fase 8: viveiro, soltura e Central de Entregas (spec 008) --------------
+
+
+class ConflitoDeViveiro(ErroDeAplicacao):
+    """Traduz uma recusa de `game.viveiro` para 409 (regra 4 da spec 008).
+
+    Hoje so existe uma: `ViveiroTransbordado`, levantada pela guarda do
+    `game.viveiro` dentro do servico de despacho (tarefa 15) e em lugar
+    nenhum mais. O `codigo` vem do proprio erro de dominio
+    (VIVEIRO_TRANSBORDADO), nunca de uma tabela de traducao aqui — mesmo
+    raciocinio de `ConflitoDeTime` e `ConflitoDeExpedicao`.
+    """
+
+    status_code: ClassVar[int] = 409
+
+    def __init__(self, erro: _ErroDeViveiroNoDominio) -> None:
+        self.codigo = erro.codigo
+        super().__init__(str(erro), detalhes=erro.detalhes)
+
+
+class ConflitoDeSoltura(ErroDeAplicacao):
+    """Traduz uma recusa de `game.soltar` para 409 (`DELETE /pokemon/{id}`).
+
+    O `codigo` vem do proprio erro de dominio (POKEMON_EM_EXPEDICAO,
+    TREINADOR_OCUPADO, POKEMON_COMPROMETIDO, ULTIMO_POKEMON, ...). O aceite de
+    entrega (tarefa 13) reusa a MESMA traducao para `exigir_que_sobre_pokemon`,
+    porque e a mesma guarda do dominio (invariante 25) vista de dois
+    endpoints diferentes.
+    """
+
+    status_code: ClassVar[int] = 409
+
+    def __init__(self, erro: _ErroDeSolturaNoDominio) -> None:
+        self.codigo = erro.codigo
+        super().__init__(str(erro), detalhes=erro.detalhes)
+
+
+class ConflitoDeEntrega(ErroDeAplicacao):
+    """Traduz uma recusa de `game.delivery` para 409 (rotas de `/deliveries`).
+
+    O `codigo` vem do proprio erro de dominio (POKEMON_NAO_ATENDE_AO_PEDIDO,
+    SEM_ESPECIE_CANDIDATA, ...), mesmo raciocinio de `ConflitoDeTime`.
+    """
+
+    status_code: ClassVar[int] = 409
+
+    def __init__(self, erro: _ErroDeEntregaNoDominio) -> None:
+        self.codigo = erro.codigo
+        super().__init__(str(erro), detalhes=erro.detalhes)
+
+
+class EntregaExpirada(ErroDeAplicacao):
+    """O pedido venceu antes do aceite (criterio 20 da spec 008).
+
+    Nao vem de `game.delivery` porque a comparacao com o estado observado e
+    feita no servico, que e quem tem o relogio em maos (Artigo I): o dominio
+    so EXPOE `estado_observado_entrega`, nao decide o que fazer com o
+    resultado.
+    """
+
+    status_code: ClassVar[int] = 409
+    codigo: ClassVar[str] = "ENTREGA_EXPIRADA"
+    mensagem_padrao: ClassVar[str] = "Este pedido venceu e nao pode mais ser aceito."
+
+
+class EntregaNaoDisponivel(ErroDeAplicacao):
+    """O pedido nao esta mais `DISPONIVEL` por outro motivo que nao o prazo.
+
+    Cobre aceitar um pedido que ja esta `EM_CURSO`, `CONCLUIDA` ou
+    `DESCARTADA` — raro no uso normal (a tela nao oferece o botao), mas a
+    segunda linha de defesa do Artigo VI nao pode confiar so na interface.
+    """
+
+    status_code: ClassVar[int] = 409
+    codigo: ClassVar[str] = "ENTREGA_NAO_DISPONIVEL"
+    mensagem_padrao: ClassVar[str] = "Este pedido nao esta mais disponivel para aceite."
+
+
+class TreinadorOcupadoParaEntrega(ErroDeAplicacao):
+    """O treinador escolhido para a entrega nao esta `DISPONIVEL` (regra 20).
+
+    Mesmo `codigo` de `team.TreinadorOcupado`: e o mesmo vocabulario do
+    contrato desde a Fase 4, e o professor nao precisa de um segundo nome
+    para "este treinador esta ocupado".
+    """
+
+    status_code: ClassVar[int] = 409
+    codigo: ClassVar[str] = "TREINADOR_OCUPADO"
+    mensagem_padrao: ClassVar[str] = "Este treinador esta ocupado e nao pode sair em entrega."
+
+
+class PokemonIndisponivel(ErroDeAplicacao):
+    """Um Pokemon escolhido para a entrega nao esta livre no viveiro (regra 20).
+
+    Cobre quem esta num time, em expedicao, ja comprometido com OUTRA entrega,
+    ou que simplesmente nao pertence a este laboratorio — o professor nunca
+    distingue estes casos pela resposta (mesmo raciocinio de
+    `RecursoNaoEncontrado`), so pelo `pokemon_id` em `detalhes`.
+    """
+
+    status_code: ClassVar[int] = 409
+    codigo: ClassVar[str] = "POKEMON_INDISPONIVEL"
+    mensagem_padrao: ClassVar[str] = "Um ou mais Pokemon escolhidos nao estao livres no viveiro."
+
+
+class EntregaEmCurso(ErroDeAplicacao):
+    """O prazo da entrega ainda nao venceu (`POST /deliveries/{id}/claim`).
+
+    Mesmo papel de `ExpedicaoEmCurso`: pedir a conclusao antes do `eta` e
+    recusado com o motivo, nao com um resultado vazio.
+    """
+
+    status_code: ClassVar[int] = 409
+    codigo: ClassVar[str] = "ENTREGA_EM_CURSO"
+    mensagem_padrao: ClassVar[str] = (
+        "O prazo desta entrega ainda nao venceu; a conclusao so existe depois que ela volta."
+    )
+
+
+class AguardeParaRegerar(ErroDeAplicacao):
+    """Invariante 15: regerar a lista inteira exige o intervalo (regra 19).
+
+    So e levantada quando NAO ha vaga a repor (`vagas_para_repor == 0`):
+    repor o que venceu ou foi aceito e de graca (invariante 23), e e esse o
+    caso em que `POST /deliveries/refresh` nunca cai aqui.
+    """
+
+    status_code: ClassVar[int] = 409
+    codigo: ClassVar[str] = "AGUARDE_PARA_REGERAR"
+    mensagem_padrao: ClassVar[str] = "A lista de entregas ainda nao pode ser descartada."

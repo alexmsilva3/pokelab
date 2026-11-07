@@ -60,6 +60,25 @@ describe('Timeline', () => {
     expect(screen.getByText('Bulbasaur virou Ivysaur.')).toBeInTheDocument()
   })
 
+  it('mostra o aviso de bagagem cheia (criterio 31 da spec 008)', () => {
+    render(
+      <Timeline
+        eventos={[
+          eventoDeExpedicaoExemplo({
+            tipo: 'BAGAGEM_CHEIA',
+            texto: 'A bagagem de Ash ficou cheia, com 4 capturas.',
+            ocorrido_em_minuto: 5,
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Bagagem cheia')).toBeInTheDocument()
+    expect(
+      screen.getByText('A bagagem de Ash ficou cheia, com 4 capturas.'),
+    ).toBeInTheDocument()
+  })
+
   it('um tipo de evento desconhecido nao quebra a tela', () => {
     render(
       <Timeline

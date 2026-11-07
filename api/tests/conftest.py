@@ -24,6 +24,8 @@ TABELAS_DE_ESTADO = (
     "expedicao_eventos",
     "expedicao_itens",
     "expedicoes",
+    "entrega_requisitos",
+    "entregas",
     "pokemon_instancias",
     "treinadores",
     "pokedex_entradas",

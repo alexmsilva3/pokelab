@@ -10,6 +10,7 @@ filtrar por tipo e preencher `PokemonInstancia.especie` sem round-trip extra.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -70,11 +71,20 @@ def _condicoes(laboratorio_id: uuid.UUID, filtros: FiltrosPokemon) -> list:
         condicoes.append(PokemonInstancia.treinador_id.is_(None))
 
     if filtros.livre is True:
-        # TODO Fase 8: acrescentar "AND comprometido_entrega_id IS NULL" quando
-        # a coluna existir — e tudo que "livre" vai precisar ganhar.
-        condicoes.append(PokemonInstancia.treinador_id.is_(None))
+        # Fase 8 (spec 008, invariante 14): "livre" agora e "sem treinador E
+        # sem entrega". Um Pokemon comprometido nao tem treinador_id (ele
+        # continua no viveiro ate a conclusao), entao sem esta segunda
+        # clausula ele aparecia como livre para `PUT /trainers/{id}/team` —
+        # exatamente o que o invariante 14 proibe.
+        condicoes.append(
+            PokemonInstancia.treinador_id.is_(None),
+        )
+        condicoes.append(PokemonInstancia.comprometido_entrega_id.is_(None))
     elif filtros.livre is False:
-        condicoes.append(PokemonInstancia.treinador_id.is_not(None))
+        condicoes.append(
+            PokemonInstancia.treinador_id.is_not(None)
+            | PokemonInstancia.comprometido_entrega_id.is_not(None)
+        )
 
     return condicoes
 
@@ -216,3 +226,162 @@ def criar_capturado(
     )
     sessao.add(pokemon)
     return pokemon
+
+
+# --- Viveiro e soltura (Fase 8, spec 008) ------------------------------------
+
+
+def listar_viveiro(sessao: Session, laboratorio_id: uuid.UUID) -> list[PokemonInstancia]:
+    """Os Pokemon do viveiro: `treinador_id` nulo (`game.viveiro.no_viveiro`).
+
+    Inclui quem esta comprometido com uma entrega — ele ainda ocupa o lugar
+    dele ate ela ser concluida (invariante 20) — e e exatamente por isso que o
+    filtro e so sobre `treinador_id`, nao sobre `comprometido_entrega_id`.
+    """
+    consulta = (
+        select(PokemonInstancia)
+        .where(
+            PokemonInstancia.laboratorio_id == laboratorio_id,
+            PokemonInstancia.treinador_id.is_(None),
+        )
+        .options(joinedload(PokemonInstancia.especie))
+        .order_by(PokemonInstancia.nivel.desc(), PokemonInstancia.id)
+    )
+    return list(sessao.scalars(consulta))
+
+
+def contar_viveiro(sessao: Session, laboratorio_id: uuid.UUID) -> int:
+    """A ocupacao do viveiro (invariante 20): `treinador_id` nulo, contagem pura.
+
+    Usada pela guarda de despacho de `game.viveiro` (tarefa 15 da spec 008),
+    que so precisa do NUMERO — `listar_viveiro` serve ao `GET /ranch`, que
+    tambem precisa dos itens, e seria uma consulta mais cara para quem so
+    quer o total.
+    """
+    return (
+        sessao.scalar(
+            select(func.count())
+            .select_from(PokemonInstancia)
+            .where(
+                PokemonInstancia.laboratorio_id == laboratorio_id,
+                PokemonInstancia.treinador_id.is_(None),
+            )
+        )
+        or 0
+    )
+
+
+def contar(sessao: Session, laboratorio_id: uuid.UUID) -> int:
+    """O total de Pokemon que CONTINUAM no laboratorio, dentro ou fora do viveiro.
+
+    E o numero que `game.soltar.exigir_que_sobre_pokemon` compara com
+    `POKEMON_MINIMOS_NO_LABORATORIO` (invariante 25): time e viveiro contam
+    igual, porque os dois ainda pertencem ao laboratorio — mas um Pokemon JA
+    `comprometido_entrega_id` NAO conta (achado critico da revisao da Fase
+    8). Ele ainda existe fisicamente na tabela ate o `claim` da entrega dele
+    apagar a linha, mas esse apagamento ja foi aprovado no aceite: contar
+    esse Pokemon aqui como "fica" e o motivo do beco sem saida que a revisao
+    reproduziu duas vezes contra o compose — a soltura E o aceite, cada um
+    enxergando so a propria saida e tratando a saida JA AGENDADA do outro
+    como acervo que fica, zeram o laboratorio juntos.
+
+    As DUAS unicas chamadoras (`pokemon_service.soltar` e
+    `entregas_service.aceitar`) chamam esta funcao ANTES de prometer o(s)
+    Pokemon da PROPRIA operacao a uma entrega — o aceite roda isto antes de
+    `pokemon_repo.comprometer`, entao os Pokemon que ELE esta prestes a
+    comprometer ainda tem `comprometido_entrega_id` nulo aqui e SAO contados
+    normalmente; so os comprometidos a OUTRAS entregas, de aceites
+    anteriores, ficam de fora. `exigir_que_sobre_pokemon(total, saindo=N)`
+    continua recebendo quantos ESTA operacao esta tirando.
+    """
+    return (
+        sessao.scalar(
+            select(func.count())
+            .select_from(PokemonInstancia)
+            .where(
+                PokemonInstancia.laboratorio_id == laboratorio_id,
+                PokemonInstancia.comprometido_entrega_id.is_(None),
+            )
+        )
+        or 0
+    )
+
+
+def travar_para_soltar(
+    sessao: Session, laboratorio_id: uuid.UUID, pokemon_id: uuid.UUID
+) -> PokemonInstancia | None:
+    """`SELECT ... FOR UPDATE` so na linha do Pokemon (Artigo VII).
+
+    Sem `joinedload` de proposito, mesmo motivo de `expedicoes_repo.
+    travar_para_resolver`: o Postgres recusa `FOR UPDATE` sobre um LEFT OUTER
+    JOIN. `especie_id`, `treinador_id` e `comprometido_entrega_id` sao
+    colunas escalares da propria linha — chegam travados sem precisar de
+    nenhuma relacao carregada. Quem precisa do `Treinador` por tras (para ler
+    o status) trava-o a parte, com `treinadores_repo.travar_treinador`.
+    """
+    return sessao.scalar(
+        select(PokemonInstancia)
+        .where(
+            PokemonInstancia.laboratorio_id == laboratorio_id,
+            PokemonInstancia.id == pokemon_id,
+        )
+        .with_for_update()
+    )
+
+
+def travar_varios(
+    sessao: Session, laboratorio_id: uuid.UUID, pokemon_ids: Sequence[uuid.UUID]
+) -> list[PokemonInstancia]:
+    """`SELECT ... FOR UPDATE` nos Pokemon escolhidos para um aceite de entrega.
+
+    Ordenado por `id` (Artigo VII, plan.md da spec 008 secao 13): duas
+    transacoes que travam o MESMO conjunto em ordens diferentes e a receita
+    classica de deadlock, mesmo raciocinio de
+    `treinadores_repo.travar_pokemon_envolvidos`. Sem `joinedload`, mesmo
+    motivo de `travar_para_soltar`.
+    """
+    if not pokemon_ids:
+        return []
+    consulta = (
+        select(PokemonInstancia)
+        .where(
+            PokemonInstancia.laboratorio_id == laboratorio_id,
+            PokemonInstancia.id.in_(pokemon_ids),
+        )
+        .order_by(PokemonInstancia.id)
+        .with_for_update()
+    )
+    return list(sessao.scalars(consulta))
+
+
+def excluir(sessao: Session, pokemon: PokemonInstancia) -> None:
+    """Remove a linha de verdade (regra do DELETE /pokemon/{id}): sem soft delete,
+    porque nao ha para que voltar (plan.md da spec 008)."""
+    sessao.delete(pokemon)
+
+
+def comprometer(pokemon: PokemonInstancia, entrega_id: uuid.UUID) -> None:
+    """Marca o Pokemon como reservado para esta entrega (aceite, regra 20)."""
+    pokemon.comprometido_entrega_id = entrega_id
+
+
+def listar_comprometidos(
+    sessao: Session, laboratorio_id: uuid.UUID, entrega_id: uuid.UUID
+) -> list[PokemonInstancia]:
+    """Os Pokemon reservados para esta entrega, travados para a conclusao.
+
+    `FOR UPDATE` porque a conclusao (`claim`) e a primeira operacao
+    DESTRUTIVA do jogo (plan.md): apagar a linha errada e irreparavel, e o
+    lock garante que nenhuma outra transacao mexe nestes Pokemon enquanto o
+    `claim` decide.
+    """
+    consulta = (
+        select(PokemonInstancia)
+        .where(
+            PokemonInstancia.laboratorio_id == laboratorio_id,
+            PokemonInstancia.comprometido_entrega_id == entrega_id,
+        )
+        .order_by(PokemonInstancia.id)
+        .with_for_update()
+    )
+    return list(sessao.scalars(consulta))

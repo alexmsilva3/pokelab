@@ -67,6 +67,16 @@ button:disabled {
   border-color: var(--cor-acento);
 }
 
+/* Acao destrutiva (SKILL.md): soltar um Pokemon e confirmar um aceite de
+   entrega apagam algo que nao volta. A cor sozinha nao substitui a
+   confirmacao nomeada que cada chamador ja pede antes do clique chegar
+   aqui — e so o sinal visual de que este botao nao e como os outros. */
+.botao-perigo {
+  background: var(--cor-erro);
+  color: var(--cor-acento-texto);
+  border-color: var(--cor-erro);
+}
+
 .tela-auth {
   max-width: 420px;
   margin: var(--espaco-5) auto;
@@ -1018,4 +1028,247 @@ button:disabled {
   font-size: 0.8rem;
   font-weight: 400;
   color: var(--cor-texto-suave);
+}
+
+/* --- Viveiro (spec 008) -------------------------------------------------- */
+
+.tela-viveiro {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--espaco-5);
+}
+
+.viveiro-resumo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--espaco-3);
+  margin: var(--espaco-4) 0;
+}
+
+.viveiro-resumo dt {
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
+}
+
+.viveiro-resumo dd {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+/* O transbordo nao e um erro de rede: e um estado normal do jogo que exige
+   atencao. Por isso usa a borda de alerta, nao a de erro — ele nao quebrou
+   nada, so pede uma decisao (SDD 4.10). */
+.viveiro-aviso-transbordo {
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-alerta);
+  border-radius: var(--raio);
+  padding: var(--espaco-3);
+  margin-bottom: var(--espaco-4);
+}
+
+.viveiro-aviso-transbordo p {
+  margin: 0;
+}
+
+.viveiro-aviso-transbordo p + p {
+  margin-top: var(--espaco-2);
+}
+
+.lista-viveiro {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--espaco-3);
+  margin: var(--espaco-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cartao-viveiro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--espaco-1);
+  width: 100%;
+  padding: var(--espaco-3);
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  text-align: center;
+}
+
+.cartao-viveiro-nome {
+  font-weight: 600;
+}
+
+.cartao-viveiro-nivel {
+  color: var(--cor-texto-suave);
+  font-size: 0.875rem;
+}
+
+/* --- Central de Entregas (spec 008) --------------------------------------- */
+
+.tela-entregas {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--espaco-5);
+}
+
+.entregas-acoes {
+  display: flex;
+  align-items: center;
+  gap: var(--espaco-3);
+  margin: var(--espaco-4) 0;
+}
+
+.entregas-regerar {
+  display: flex;
+  align-items: center;
+  gap: var(--espaco-2);
+  margin: 0;
+}
+
+.lista-entregas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--espaco-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cartao-entrega {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--espaco-2);
+  padding: var(--espaco-3);
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+}
+
+.cartao-entrega-destino {
+  margin: 0;
+  color: var(--cor-texto-suave);
+}
+
+.entrega-requisitos {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-1);
+  font-size: 0.875rem;
+}
+
+.entrega-recompensas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--espaco-2);
+  margin: 0;
+}
+
+.entrega-recompensas dt {
+  font-size: 0.75rem;
+  color: var(--cor-texto-suave);
+}
+
+.entrega-recompensas dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.entrega-contador {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.entrega-resultado {
+  margin: 0;
+  display: grid;
+  gap: var(--espaco-1);
+}
+
+.entrega-resultado dt {
+  font-size: 0.75rem;
+  color: var(--cor-texto-suave);
+}
+
+.entrega-resultado dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.aceitar-entrega {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-3);
+  margin-top: var(--espaco-2);
+  padding-top: var(--espaco-2);
+  border-top: 1px dashed var(--cor-borda);
+}
+
+.aceitar-entrega-requisito {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.aceitar-entrega-requisito legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: var(--espaco-1);
+}
+
+.aceitar-entrega-candidatos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espaco-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.aceitar-entrega-candidatos button[aria-pressed='true'] {
+  border-color: var(--cor-acento);
+  background: var(--cor-acento);
+  color: var(--cor-acento-texto);
+  font-weight: 600;
+}
+
+.aceitar-entrega-treinadores {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.aceitar-entrega-treinadores legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: var(--espaco-1);
+}
+
+.aceitar-entrega-treinadores ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espaco-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.aceitar-entrega-treinadores button[aria-pressed='true'] {
+  border-color: var(--cor-acento);
+  background: var(--cor-acento);
+  color: var(--cor-acento-texto);
+  font-weight: 600;
+}
+
+.aceitar-entrega-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--espaco-2);
 }

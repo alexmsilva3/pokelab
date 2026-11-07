@@ -9,7 +9,19 @@ from app.core.caminhos import DIR_SPRITES
 from app.core.config import get_settings
 from app.core.erros import ErroDeAplicacao
 from app.game.erros import ErroDeDominio
-from app.routers import auth, expedicoes, health, itens, mapa, me, pokedex, pokemon, trainers
+from app.routers import (
+    auth,
+    deliveries,
+    expedicoes,
+    health,
+    itens,
+    mapa,
+    me,
+    pokedex,
+    pokemon,
+    trainers,
+    viveiro,
+)
 
 settings = get_settings()
 
@@ -127,6 +139,8 @@ app.include_router(pokedex.router)
 app.include_router(itens.router)
 app.include_router(mapa.router)
 app.include_router(expedicoes.router)
+app.include_router(viveiro.router)
+app.include_router(deliveries.router)
 
 # `check_dir=False`: o diretorio pode faltar num ambiente sem o acervo
 # montado (ver docker-compose.yml e o README sobre `/data`); o mount nao pode

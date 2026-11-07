@@ -9,6 +9,7 @@ import { ApiError } from '@/api/client'
 import { listarPokemon } from '@/api/pokemon'
 import { buscarTreinador, pretenderTime, salvarTime } from '@/api/trainers'
 import type { PokemonResumo, PreviaTime, TreinadorDetalhe } from '@/api/tipos'
+import { soltarPokemon } from '@/api/viveiro'
 import { CartaoPokemon } from '@/components/CartaoPokemon'
 import { SpritePokemon } from '@/components/SpritePokemon'
 import { rotuloStatus } from '@/lib/treinadores'
@@ -68,6 +69,8 @@ export function MontarTime({
   const [estadoPrevia, setEstadoPrevia] = useState<EstadoPrevia | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+  const [soltandoId, setSoltandoId] = useState<string | null>(null)
+  const [erroSoltar, setErroSoltar] = useState<string | null>(null)
   const controladorPrevia = useRef<AbortController | null>(null)
 
   const carregarDetalhe = useCallback(
@@ -180,6 +183,40 @@ export function MontarTime({
       )
     } finally {
       setSalvando(false)
+    }
+  }
+
+  /**
+   * Solta um Pokemon do time deste treinador (spec 008, criterio 8): o
+   * unico lugar da interface, alem do viveiro, onde `DELETE /pokemon/{id}`
+   * e chamado — aqui o Pokemon esta visivel porque tem treinador, nao
+   * porque esta livre. Mesma confirmacao nomeada e irreversivel do viveiro
+   * (`pages/Viveiro.tsx`). So aparece quando o treinador esta disponivel: a
+   * secao de "ocupado", acima, retorna antes de chegar aqui.
+   */
+  async function soltar(pokemon: PokemonResumo) {
+    const confirmado = window.confirm(
+      `Soltar ${pokemon.nome} (Nv. ${pokemon.nivel})? Ele volta a natureza, nao rende nada, e esta acao nao pode ser desfeita.`,
+    )
+    if (!confirmado) return
+
+    setErroSoltar(null)
+    setSoltandoId(pokemon.id)
+    try {
+      await soltarPokemon(pokemon.id)
+      const atualizado = await buscarTreinador(treinadorId)
+      const idsAtuais = atualizado.time.map((p) => p.id)
+      setEstadoDetalhe({ tipo: 'pronto', treinador: atualizado })
+      setComposicao(idsAtuais)
+      setComposicaoSalva(idsAtuais)
+      carregarLivres()
+      onSalvo?.(atualizado)
+    } catch (motivo) {
+      setErroSoltar(
+        motivo instanceof ApiError ? motivo.message : 'Nao foi possivel soltar este Pokemon.',
+      )
+    } finally {
+      setSoltandoId(null)
     }
   }
 
@@ -328,6 +365,12 @@ export function MontarTime({
         </p>
       )}
 
+      {erroSoltar && (
+        <p role="alert" className="mensagem-erro">
+          {erroSoltar}
+        </p>
+      )}
+
       <div className="montar-time-colunas">
         <div>
           <h3>{`Time atual (${pokemonDoTime.length} / ${treinador.tamanho_maximo_time})`}</h3>
@@ -340,6 +383,14 @@ export function MontarTime({
               {pokemonDoTime.map((pokemon) => (
                 <li key={pokemon.id}>
                   <CartaoPokemon pokemon={pokemon} selecionado onSelecionar={alternarSelecao} />
+                  <button
+                    type="button"
+                    className="botao-perigo"
+                    disabled={soltandoId === pokemon.id}
+                    onClick={() => soltar(pokemon)}
+                  >
+                    {soltandoId === pokemon.id ? 'Soltando...' : 'Soltar'}
+                  </button>
                 </li>
               ))}
             </ul>

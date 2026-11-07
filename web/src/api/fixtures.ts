@@ -17,6 +17,7 @@ import type {
   EntradaPokedexCapturada,
   EntradaPokedexDesconhecida,
   EntradaPokedexVista,
+  EntregaLer,
   EspecieAvistada,
   EspecieVistaNoRelatorio,
   EventoDeExpedicao,
@@ -31,23 +32,29 @@ import type {
   PerfilCompleto,
   PokemonDetalhe,
   PokemonDoRelatorio,
+  PokemonEntregueNoResultado,
   PokemonResumo,
   PreviaExpedicao,
   PreviaTime,
   Professor,
   RelatorioDeCampo,
+  RequisitoLer,
   RespostaClaimExpedicao,
+  RespostaClaimEntrega,
+  RespostaEntregas,
   RespostaExpedicoes,
   RespostaItens,
   RespostaListaPokemon,
   RespostaMapa,
   RespostaPokedex,
   RespostaTreinadores,
+  ResultadoDeEntrega,
   ResumoLaboratorio,
   Sessao,
   StatsEfetivos,
   TreinadorDetalhe,
   TreinadorResumo,
+  Viveiro,
 } from '@/api/tipos'
 
 export function professorExemplo(sobrescritas: Partial<Professor> = {}): Professor {
@@ -673,6 +680,108 @@ export function respostaClaimExpedicaoExemplo(
       relatorio,
     }),
     relatorio,
+    ...sobrescritas,
+  }
+}
+
+// --- Viveiro e Central de Entregas (spec 008) -----------------------------
+
+export function viveiroExemplo(sobrescritas: Partial<Viveiro> = {}): Viveiro {
+  return {
+    capacidade: 50,
+    ocupacao: 3,
+    transbordado: false,
+    lugares_faltando: 0,
+    items: [pokemonResumoExemplo()],
+    ...sobrescritas,
+  }
+}
+
+export function requisitoLerExemplo(sobrescritas: Partial<RequisitoLer> = {}): RequisitoLer {
+  return {
+    especie_id: 16,
+    especie_nome: 'Pidgey',
+    quantidade: 2,
+    disponiveis_no_viveiro: 4,
+    ...sobrescritas,
+  }
+}
+
+/**
+ * Um pedido `DISPONIVEL` e atendivel: o caso comum, usado pela maioria dos
+ * testes da Central de Entregas. `eta`, `segundos_restantes` e
+ * `treinador_id` nulos, como todo pedido que ainda nao foi aceito.
+ */
+export function entregaLerExemplo(sobrescritas: Partial<EntregaLer> = {}): EntregaLer {
+  return {
+    id: 'entrega-1',
+    titulo: 'Encomenda para Cerulean City',
+    local_destino_id: 'cerulean-city',
+    local_destino_nome: 'Cerulean City',
+    estado_observado: 'DISPONIVEL',
+    segundos_para_expirar: 7200,
+    requisitos: [requisitoLerExemplo()],
+    atendivel: true,
+    motivo: null,
+    duracao_minutos: 12,
+    recompensa_moedas: 240,
+    recompensa_exp_laboratorio: 160,
+    recompensa_exp_treinador: 40,
+    eta: null,
+    segundos_restantes: null,
+    treinador_id: null,
+    ...sobrescritas,
+  }
+}
+
+export function respostaEntregasExemplo(
+  sobrescritas: Partial<RespostaEntregas> = {},
+): RespostaEntregas {
+  return {
+    items: [entregaLerExemplo()],
+    vagas_para_repor: 0,
+    segundos_para_regerar: 900,
+    ...sobrescritas,
+  }
+}
+
+export function pokemonEntregueNoResultadoExemplo(
+  sobrescritas: Partial<PokemonEntregueNoResultado> = {},
+): PokemonEntregueNoResultado {
+  return { especie_nome: 'Pidgey', nivel: 4, ...sobrescritas }
+}
+
+export function resultadoDeEntregaExemplo(
+  sobrescritas: Partial<ResultadoDeEntrega> = {},
+): ResultadoDeEntrega {
+  return {
+    pokemon_entregues: [pokemonEntregueNoResultadoExemplo()],
+    moedas_ganhas: 240,
+    moedas_total: 1240,
+    laboratorio: ganhoDeExperienciaExemplo({ nivel_antes: 2, nivel_depois: 2, exp_ganha: 160 }),
+    treinador: ganhoDeExperienciaExemplo({ nivel_antes: 3, nivel_depois: 3, exp_ganha: 40 }),
+    lugares_liberados: 2,
+    ...sobrescritas,
+  }
+}
+
+/**
+ * Resposta de `POST /deliveries/{id}/claim`. Como em
+ * `respostaClaimExpedicaoExemplo`, `entrega` ja vem no estado `CONCLUIDA`
+ * coerente com o `resultado` — uma fixture que misturasse `DISPONIVEL` com um
+ * resultado preenchido não corresponde a nada que o servidor realmente envia.
+ */
+export function respostaClaimEntregaExemplo(
+  sobrescritas: Partial<RespostaClaimEntrega> = {},
+): RespostaClaimEntrega {
+  return {
+    entrega: entregaLerExemplo({
+      estado_observado: 'CONCLUIDA',
+      segundos_para_expirar: null,
+      atendivel: false,
+      motivo: null,
+    }),
+    resultado: resultadoDeEntregaExemplo(),
     ...sobrescritas,
   }
 }

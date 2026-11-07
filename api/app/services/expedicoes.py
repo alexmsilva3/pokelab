@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.erros import (
     ConflitoDeExpedicao,
+    ConflitoDeViveiro,
     ExpedicaoAbortada,
     ExpedicaoEmCurso,
     ExpedicaoNaoEstaEmCurso,
@@ -40,6 +41,7 @@ from app.game import balance, expedition
 from app.game import encounter as encounter_dominio
 from app.game import laboratorio as laboratorio_dominio
 from app.game import trainers as trainers_dominio
+from app.game import viveiro as viveiro_dominio
 from app.game.expedition import (
     CatalogoEmCampo,
     ContextoDeResolucao,
@@ -341,6 +343,26 @@ def obter(sessao: Session, laboratorio_id: uuid.UUID, expedicao_id: uuid.UUID) -
 # --- Despacho (criterios 1 a 8 e 14) -----------------------------------------
 
 
+def _exigir_espaco_no_viveiro(sessao: Session, laboratorio_id: uuid.UUID) -> None:
+    """A GUARDA do viveiro transbordado (tarefa 15 da spec 008, regra 4).
+
+    Chamada de DOIS lugares so, `despachar` e `prever` — nunca em reclamar
+    relatorio, aceitar entrega, concluir entrega ou soltar, que sao as
+    saidas do transbordo — e as DUAS chamadas passam por esta MESMA funcao,
+    nao por duas copias da mesma conta. A previa divergindo do despacho ja
+    foi defeito nas Fases 4 e 6 (time e expedicao validando por caminhos
+    diferentes); a cura aqui nao e "lembrar de testar os dois toda vez", e
+    sim deixar fisicamente impossivel ter dois lugares que decidem a mesma
+    pergunta de jeitos diferentes.
+
+    Leitura sem lock: nem o despacho nem a previa mudam a ocupacao do
+    viveiro, entao nao ha nada aqui para proteger de concorrencia alem do
+    que o lock do treinador, no despacho, ja cobre.
+    """
+    ocupacao_do_viveiro = pokemon_repo.contar_viveiro(sessao, laboratorio_id)
+    viveiro_dominio.exigir_espaco_para_despachar(ocupacao_do_viveiro)
+
+
 def despachar(
     sessao: Session,
     laboratorio_id: uuid.UUID,
@@ -359,6 +381,11 @@ def despachar(
     """
     agora = datetime.now(UTC)
     escala = get_settings().expedition_time_scale
+
+    try:
+        _exigir_espaco_no_viveiro(sessao, laboratorio_id)
+    except viveiro_dominio.ViveiroTransbordado as erro:
+        raise ConflitoDeViveiro(erro) from erro
 
     grafo, _locais_por_id, destino = _destino_valido(sessao, local_id)
     visitados = mapa_repo.listar_visitados(sessao, laboratorio_id)
@@ -450,9 +477,20 @@ def prever(
     proteger de concorrencia aqui. O `POST /expeditions` revalida tudo sob
     lock antes de gravar, e e essa segunda validacao que vale — a previa so
     existe para o professor nao levar um erro no botao de despachar.
+
+    A guarda do viveiro transbordado (regra 4) e a MESMA chamada de
+    `despachar`, via `_exigir_espaco_no_viveiro` — nao uma copia dela. Sem
+    isso, esta previa diria "pode despachar" com o viveiro transbordado, e o
+    `POST /expeditions` recusaria logo em seguida: exatamente o erro no botao
+    que esta funcao existe para evitar (achado da revisao da Fase 8).
     """
     agora = datetime.now(UTC)
     escala = get_settings().expedition_time_scale
+
+    try:
+        _exigir_espaco_no_viveiro(sessao, laboratorio_id)
+    except viveiro_dominio.ViveiroTransbordado as erro:
+        return PreviaDespachoLer(valido=False, codigo=erro.codigo, motivo=str(erro))
 
     grafo, _locais_por_id, destino = _destino_valido(sessao, local_id)
     visitados = mapa_repo.listar_visitados(sessao, laboratorio_id)

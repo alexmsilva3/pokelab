@@ -14,13 +14,16 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.erros import RecursoNaoEncontrado
+from app.core.erros import ConflitoDeSoltura, RecursoNaoEncontrado
 from app.game import balance
+from app.game import soltar as soltar_dominio
 from app.game import trainers as trainers_dominio
 from app.game.experience import experiencia_para_o_proximo_nivel
 from app.game.stats import StatsBase, calcular_stats_efetivos, hp_atual_absoluto
 from app.models import PokemonInstancia
+from app.repositories import laboratorios as laboratorios_repo
 from app.repositories import pokemon as pokemon_repo
+from app.repositories import treinadores as treinadores_repo
 from app.repositories.pokemon import FiltrosPokemon
 from app.schemas.pokemon import PaginaPokemon, PokemonDetalhe, PokemonResumo, StatsEfetivosLer
 from app.services import relogio
@@ -71,6 +74,81 @@ def atualizar_apelido(
     sessao.commit()
 
     return _montar_detalhe(pokemon)
+
+
+# --- Soltar (spec 008, invariantes 24 e 25) ----------------------------------
+
+
+def soltar(sessao: Session, laboratorio_id: uuid.UUID, pokemon_id: uuid.UUID) -> None:
+    """`DELETE /pokemon/{id}`: devolve a natureza, sem recompensa (SDD 4.10).
+
+    Sem valor de retorno, como o proprio `game.soltar` (plan.md, criterio 7:
+    nada muda alem do Pokemon sumir e a ocupacao cair). Remove a linha de
+    verdade — sem soft delete, porque nao ha para que voltar.
+
+    **Ordem de lock (Artigo VII) — esta e a ordem CANONICA do projeto
+    inteiro, referenciada por `trainers_service.definir_time` e por
+    `entregas_service.aceitar`/`claim`/`refresh`:** Pokemon primeiro (e a
+    linha que o pedido identifica), o treinador dele depois se houver um
+    (para ler o status sob trava, nao um instantaneo que um despacho
+    concorrente pode ter mudado por baixo), e o laboratorio por ultimo, so
+    para a CONTAGEM — sem travar o laboratorio, duas solturas do ultimo par
+    de Pokemon de um laboratorio de dois poderiam ler `total=2` as duas e as
+    duas passarem, esvaziando o acervo (invariante 25). A mesma trava protege
+    a conclusao de expedicao (que insere capturas) e a conclusao de entrega
+    (que remove Pokemon), entao a soltura entra na mesma fila.
+
+    Pokemon-antes-do-treinador nao e escolha arbitraria: esta funcao so
+    descobre QUAL treinador travar depois de ler o Pokemon (o pedido so traz
+    `pokemon_id`), entao travar o treinador primeiro exigiria adivinhar quem
+    e antes de ler a linha que diz quem e. As DUAS outras operacoes que
+    travam Pokemon e treinador juntos — `definir_time` e `aceitar` — recebem
+    os dois ids prontos no pedido, e foram alinhadas a esta ordem (nao o
+    contrario) exatamente por isso: inverter aqui era impossivel sem uma
+    segunda consulta e um laco de nova tentativa; alinhar as outras duas era
+    so trocar a ordem de duas chamadas. Laboratorio, quando qualquer destas
+    operacoes precisa dele, e sempre o ULTIMO lock da transacao — e por isso
+    `entregas_service.refresh` trava as entregas que vai descartar ANTES do
+    laboratorio, nunca depois (revisao da Fase 8, achado "dois deadlocks").
+    """
+    pokemon = pokemon_repo.travar_para_soltar(sessao, laboratorio_id, pokemon_id)
+    if pokemon is None:
+        raise RecursoNaoEncontrado()
+
+    treinador_do_pokemon: soltar_dominio.TreinadorDoPokemon | None = None
+    if pokemon.treinador_id is not None:
+        treinador = treinadores_repo.travar_treinador(sessao, laboratorio_id, pokemon.treinador_id)
+        if treinador is None:  # pragma: no cover - FK garante a existencia
+            sessao.rollback()
+            raise RecursoNaoEncontrado()
+        treinador_do_pokemon = soltar_dominio.TreinadorDoPokemon(
+            id=treinador.id,
+            nome=treinador.nome,
+            status=trainers_dominio.status_de(treinador.status),
+        )
+
+    laboratorio = laboratorios_repo.travar(sessao, laboratorio_id)
+    if laboratorio is None:  # pragma: no cover - FK garante a existencia
+        sessao.rollback()
+        raise RecursoNaoEncontrado()
+    total_do_laboratorio = pokemon_repo.contar(sessao, laboratorio_id)
+
+    pokemon_do_laboratorio = soltar_dominio.PokemonDoLaboratorio(
+        id=pokemon.id,
+        treinador_id=pokemon.treinador_id,
+        comprometido_entrega_id=pokemon.comprometido_entrega_id,
+    )
+
+    try:
+        soltar_dominio.pode_soltar(
+            pokemon_do_laboratorio, treinador_do_pokemon, total_do_laboratorio
+        )
+    except soltar_dominio.ErroDeSoltura as erro:
+        sessao.rollback()
+        raise ConflitoDeSoltura(erro) from erro
+
+    pokemon_repo.excluir(sessao, pokemon)
+    sessao.commit()
 
 
 def _hp_observado(pokemon: PokemonInstancia, agora: datetime, escala: float) -> int:

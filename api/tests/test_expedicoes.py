@@ -646,32 +646,44 @@ def test_escala_menor_que_um_encurta_a_duracao_da_expedicao(sessao_db, monkeypat
 # --- Alem dos catorze, item 8: previa e despacho concordam ---------------------
 
 
-def _cenario_valido(sessao, sessao_db, laboratorio_id):
+def _cenario_valido(sessao, sessao_db, laboratorio_id, monkeypatch):
     treinador_id = _treinador_pronto(sessao)
     return treinador_id, LOCAL_ALCANCAVEL, [], True, None
 
 
-def _cenario_time_vazio(sessao, sessao_db, laboratorio_id):
+def _cenario_time_vazio(sessao, sessao_db, laboratorio_id, monkeypatch):
     treinador_id = _treinadores(sessao)[0]["id"]
     return treinador_id, LOCAL_ALCANCAVEL, [], False, "TIME_VAZIO"
 
 
-def _cenario_destino_fora_de_alcance(sessao, sessao_db, laboratorio_id):
+def _cenario_destino_fora_de_alcance(sessao, sessao_db, laboratorio_id, monkeypatch):
     treinador_id = _treinador_pronto(sessao)
     return treinador_id, LOCAL_FORA_DE_ALCANCE, [], False, "DESTINO_FORA_DE_ALCANCE"
 
 
-def _cenario_estoque_insuficiente(sessao, sessao_db, laboratorio_id):
+def _cenario_estoque_insuficiente(sessao, sessao_db, laboratorio_id, monkeypatch):
     treinador_id = _treinador_pronto(sessao)
     quantidade_acima_do_estoque = balance.ESTOQUE_INICIAL["potion"] + 1
     carga = [{"item_id": "potion", "quantidade": quantidade_acima_do_estoque}]
     return treinador_id, LOCAL_ALCANCAVEL, carga, False, "ESTOQUE_INSUFICIENTE"
 
 
-def _cenario_treinador_ocupado(sessao, sessao_db, laboratorio_id):
+def _cenario_treinador_ocupado(sessao, sessao_db, laboratorio_id, monkeypatch):
     treinador_id = _treinador_pronto(sessao)
     assert _despachar(sessao, treinador_id).status_code == 201
     return treinador_id, LOCAL_ALCANCAVEL, [], False, "TREINADOR_OCUPADO"
+
+
+def _cenario_viveiro_transbordado(sessao, sessao_db, laboratorio_id, monkeypatch):
+    """Achado da revisao da Fase 8: sem isto, a previa dizia "pode despachar"
+    com o viveiro transbordado, e o despacho recusava logo em seguida — o
+    erro no botao que a previa existe para evitar. `CAPACIDADE_VIVEIRO`
+    patchada para zero: qualquer ocupacao (os tres iniciais, sempre
+    presentes) ja basta para transbordar.
+    """
+    treinador_id = _treinador_pronto(sessao)
+    monkeypatch.setattr(balance, "CAPACIDADE_VIVEIRO", 0)
+    return treinador_id, LOCAL_ALCANCAVEL, [], False, "VIVEIRO_TRANSBORDADO"
 
 
 CENARIOS_DE_DESPACHO = [
@@ -680,15 +692,16 @@ CENARIOS_DE_DESPACHO = [
     pytest.param(_cenario_destino_fora_de_alcance, id="destino-fora-de-alcance"),
     pytest.param(_cenario_estoque_insuficiente, id="estoque-insuficiente"),
     pytest.param(_cenario_treinador_ocupado, id="treinador-ocupado"),
+    pytest.param(_cenario_viveiro_transbordado, id="viveiro-transbordado"),
 ]
 
 
 @pytest.mark.parametrize("montar_cenario", CENARIOS_DE_DESPACHO)
-def test_previa_e_despacho_concordam_no_veredito(sessao_db, montar_cenario):
+def test_previa_e_despacho_concordam_no_veredito(sessao_db, monkeypatch, montar_cenario):
     sessao = _registrar(f"cenario-{montar_cenario.__name__}")
     laboratorio_id = uuid.UUID(sessao["laboratorio"]["id"])
     treinador_id, local_id, carga, valido_esperado, codigo_esperado = montar_cenario(
-        sessao, sessao_db, laboratorio_id
+        sessao, sessao_db, laboratorio_id, monkeypatch
     )
 
     previa = _prever(sessao, treinador_id, local_id, carga)

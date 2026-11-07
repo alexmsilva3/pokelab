@@ -1054,12 +1054,18 @@ class TipoDeEvento(StrEnum):
     depois de uma derrota — vai no texto e no payload do `CONTRATEMPO`, pelo
     mesmo motivo: dois significados no mesmo tipo fariam a tela desenhar o
     icone de achado para uma Pocao que saiu da mochila.
+
+    `BAGAGEM_CHEIA` entrou na Fase 8 (tarefa 3 da spec 008) e e **aditivo**:
+    ele nao consome rolagem nenhuma, entao a ordem dos sorteios fixada no
+    plano da spec 007 continua valendo e nenhuma semente ja gravada muda de
+    resultado. O que ele muda e a sequencia de EVENTOS, e so isso.
     """
 
     PARTIDA = "PARTIDA"
     BATALHA = "BATALHA"
     CAPTURA = "CAPTURA"
     CAPTURA_FALHA = "CAPTURA_FALHA"
+    BAGAGEM_CHEIA = "BAGAGEM_CHEIA"
     DESCOBERTA = "DESCOBERTA"
     ITEM = "ITEM"
     CONTRATEMPO = "CONTRATEMPO"
@@ -1531,7 +1537,9 @@ def resolver(contexto: ContextoDeResolucao, gerador: GeradorAleatorio) -> Relato
     **A captura para, o registro continua.** Atingida a capacidade da bagagem
     ou acabadas as Pokebolas, nao ha mais tentativa — mas todo encontro
     seguinte continua virando avistamento na Pokedex (invariante 11, criterio
-    7 da spec 007).
+    7 da spec 007). A captura que ENCHE a bagagem emite um `BAGAGEM_CHEIA`
+    logo em seguida, para que o professor nao confunda falta de espaco com
+    azar na rolagem (criterio 31 da spec 008); o evento nao consome sorteio.
     """
     eventos: list[EventoDeCampo] = []
     membros = _membros_iniciais(contexto)
@@ -1720,6 +1728,38 @@ def resolver(contexto: ContextoDeResolucao, gerador: GeradorAleatorio) -> Relato
                         ),
                         payload_da_captura,
                     )
+                    # Evento aditivo da Fase 8 (tarefa 3 da spec 008): a
+                    # bagagem cheia deixa de ser silenciosa. Ele NAO consome
+                    # sorteio — nao ha chamada ao gerador neste bloco —, entao
+                    # a ordem das oito rolagens do plano da spec 007 continua
+                    # intacta e nenhuma semente ja despachada muda de
+                    # resultado. O que muda e a sequencia de EVENTOS, e so.
+                    #
+                    # Sai logo depois da captura que ENCHEU a bagagem, que e o
+                    # momento que o professor precisa ver. Anunciar so no
+                    # encontro seguinte deixaria a expedicao que encheu no
+                    # ultimo encontro sem aviso nenhum, e e justamente ali que
+                    # a decisao de levar um time menor se forma.
+                    #
+                    # Uma vez por expedicao: a bagagem nao esvazia em campo, e
+                    # a condicao e uma igualdade exata, nao um ">=", para que
+                    # nenhum encontro seguinte repita a linha.
+                    if len(capturas) == capacidade_bagagem(len(membros)):
+                        _anotar(
+                            eventos,
+                            TipoDeEvento.BAGAGEM_CHEIA,
+                            minuto,
+                            narrativa.texto_de_bagagem_cheia(
+                                len(eventos),
+                                treinador=contexto.treinador.nome,
+                                capturados=len(capturas),
+                            ),
+                            {
+                                "capturas": len(capturas),
+                                "capacidade_bagagem": capacidade_bagagem(len(membros)),
+                                "tamanho_do_time": len(membros),
+                            },
+                        )
                 else:
                     _anotar(
                         eventos,

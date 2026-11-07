@@ -7,6 +7,7 @@ conta tem exatamente um laboratorio") vira regra de banco.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -105,3 +106,42 @@ def atualizar_progressao(laboratorio: Laboratorio, *, nivel: int, experiencia: i
     """Grava o nivel e a experiencia que `game.laboratorio` ja calculou."""
     laboratorio.nivel = nivel
     laboratorio.experiencia = experiencia
+
+
+def creditar_moedas(laboratorio: Laboratorio, quantidade: int) -> None:
+    """Soma `quantidade` ao saldo do laboratorio (conclusao de entrega, spec 008).
+
+    So soma: quem decidiu quanto e `game.delivery.recompensa_da_entrega`, e
+    quem chama precisa ja ter travado a linha (`travar`, acima) na mesma
+    transacao — duas conclusoes concorrentes do mesmo laboratorio, sem o lock,
+    perderiam um credito exatamente como duas expedicoes concorrentes
+    perderiam experiencia (ver o comentario de `travar`).
+    """
+    laboratorio.moedas += quantidade
+
+
+def atualizar_sorteio_entregas(laboratorio: Laboratorio, sorteado_em: datetime) -> None:
+    """Carimba o instante do ultimo sorteio da Central (invariantes 15 e 19).
+
+    Chamada tanto quando a Central REGERA a lista valida (`POST
+    /deliveries/refresh` com `vagas_para_repor == 0`) quanto quando REPOE uma
+    vaga aberta por expiracao ou aceite (`vagas_para_repor > 0`) — as duas sao
+    sorteio de verdade (`game.delivery.gerar_pedidos`), e o intervalo conta
+    "desde o ultimo sorteio" (regra 19), nao so desde o ultimo descarte.
+
+    A UNICA excecao e o sorteio de bootstrap, quando `entregas_geradas_em`
+    ainda e nulo (laboratorio que nunca abriu a Central): esse primeiro
+    carimbo so acontece no proprio descarte, nunca na reposicao — e e por
+    isso que o chamador de reposicao (`services/entregas.py::refresh`) so
+    invoca esta funcao quando ja havia um carimbo anterior. Sem essa
+    distincao, o PRIMEIRO preenchimento (lista vazia, criterio 13) carimbaria
+    o relogio e a PROXIMA chamada — que descarta essa lista recem-cheia,
+    criterio 21 — passaria a exigir os 15 minutos que "o primeiro sorteio nao
+    e descarte de nada" promete nao cobrar.
+
+    Em nenhum dos dois casos isso faz o REPOR em si esperar (invariante 18):
+    esta funcao so GRAVA o carimbo, nunca o LE para decidir se a reposicao
+    pode prosseguir — quem le o carimbo para decidir e so o caminho do
+    descarte, em `services/entregas.py::refresh`.
+    """
+    laboratorio.entregas_geradas_em = sorteado_em

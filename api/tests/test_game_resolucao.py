@@ -849,3 +849,154 @@ def test_propriedades_que_valem_para_qualquer_semente(semente):
     for batalha in relatorio.eventos:
         if batalha.payload and "chance" in batalha.payload:
             assert balance.P_VITORIA_MINIMA <= batalha.payload["chance"] <= balance.P_VITORIA_MAXIMA
+
+
+# --- 11. O aviso de bagagem cheia (criterio 31 da spec 008) -----------------
+#
+# Evento ADITIVO: ele nao consome sorteio nenhum. O teste que importa aqui nao
+# e o que confere a frase, e sim o que confere a SEQUENCIA DE CHAMADAS AO
+# GERADOR — mudar o numero de rolagens reescreveria o resultado de toda
+# expedicao ja despachada e ainda nao resolvida, e nenhum outro teste acusaria.
+
+
+def time_de_tres():
+    """Time de tres: bagagem de 6 - 3 = 3, que e o que os testes abaixo enchem."""
+    return (membro(BULBASAUR, 20), membro(CATERPIE, 20), membro(PIDGEY, 20))
+
+
+def test_a_captura_que_enche_a_bagagem_emite_o_aviso():
+    time = time_de_tres()
+    gerador = roteiro(floats=[0.0] * 40, inteiros=[0] + [5, 3] * 8)
+
+    relatorio = resolver(contexto(time=time, encontros_base=7), gerador)
+
+    avisos = [e for e in relatorio.eventos if e.tipo is TipoDeEvento.BAGAGEM_CHEIA]
+    assert len(avisos) == 1
+    assert avisos[0].payload == {
+        "capturas": 3,
+        "capacidade_bagagem": 3,
+        "tamanho_do_time": 3,
+    }
+
+
+def test_o_aviso_vem_logo_depois_da_terceira_captura():
+    time = time_de_tres()
+    gerador = roteiro(floats=[0.0] * 40, inteiros=[0] + [5, 3] * 8)
+
+    relatorio = resolver(contexto(time=time, encontros_base=7), gerador)
+
+    capturas = [e.ordem for e in relatorio.eventos if e.tipo is TipoDeEvento.CAPTURA]
+    aviso = next(e for e in relatorio.eventos if e.tipo is TipoDeEvento.BAGAGEM_CHEIA)
+    assert aviso.ordem == capturas[-1] + 1
+
+
+def test_o_texto_do_aviso_nomeia_o_treinador_e_o_que_continua_valendo():
+    time = time_de_tres()
+    gerador = roteiro(floats=[0.0] * 40, inteiros=[0] + [5, 3] * 8)
+
+    relatorio = resolver(contexto(time=time, encontros_base=7), gerador)
+
+    texto = next(e for e in relatorio.eventos if e.tipo is TipoDeEvento.BAGAGEM_CHEIA).texto
+    assert "Ash" in texto
+    assert "Pokedex" in texto
+
+
+def test_sem_bagagem_cheia_nao_ha_aviso():
+    # Time de um (bagagem 5) com duas bolas: a municao acaba antes do espaco,
+    # e quem para a captura e a mochila, nao a bagagem.
+    gerador = roteiro(floats=[0.0] * 30, inteiros=[0] + [5, 3] * 5)
+
+    relatorio = resolver(contexto(encontros_base=5, carga=(bolsa_de_bolas(2),)), gerador)
+
+    assert len(relatorio.capturas) == 2
+    assert TipoDeEvento.BAGAGEM_CHEIA.value not in tipos(relatorio)
+
+
+def test_a_captura_que_falha_nao_emite_o_aviso():
+    # A bola foi gasta, mas o Pokemon escapou: a bagagem continua com espaco.
+    gerador = roteiro(floats=[0.0, 0.0, 0.99, 0.99], inteiros=[0, 5, 3])
+
+    relatorio = resolver(contexto(encontros_base=1), gerador)
+
+    assert TipoDeEvento.BAGAGEM_CHEIA.value not in tipos(relatorio)
+
+
+def test_o_aviso_sai_uma_vez_so_em_toda_a_expedicao():
+    # A bagagem nao esvazia em campo: repetir o aviso a cada encontro seguinte
+    # encheria a linha do tempo de ruido.
+    time = time_de_tres()
+    gerador = roteiro(floats=[0.0] * 60, inteiros=[0] + [5, 3] * 11)
+
+    relatorio = resolver(contexto(time=time, encontros_base=10), gerador)
+
+    assert relatorio.encontros == 10
+    assert tipos(relatorio).count(TipoDeEvento.BAGAGEM_CHEIA.value) == 1
+
+
+def test_o_aviso_de_bagagem_cheia_nao_consome_nenhum_sorteio():
+    # ESTE e o teste que protege o contrato do plano da spec 007. A sequencia
+    # abaixo e a mesma de antes do evento existir: os tres primeiros encontros
+    # gastam as oito rolagens com captura, e os dois ultimos param na rolagem
+    # do achado porque nao ha mais espaco. Uma chamada a mais nesta lista
+    # significa que o evento virou rolagem, e que toda semente ja gravada
+    # passou a narrar outra historia.
+    time = time_de_tres()
+    gerador = roteiro(floats=[0.0] * 40, inteiros=[0] + [5, 3] * 6)
+
+    resolver(contexto(time=time, encontros_base=5), gerador)
+
+    com_captura = [
+        "random",  # 2 especie
+        "randint(5,5)",  # 3 nivel do selvagem
+        "random",  # 4 vitoria
+        "randint(3,8)",  # 5 desgaste da vitoria
+        "random",  # 6 houve achado
+        "random",  # 7 qual item
+        "random",  # 8 tentativa de captura
+    ]
+    sem_captura = com_captura[:-1]  # a bagagem cheia corta a rolagem 8, e so ela
+    assert gerador.chamadas == ["randint(-1,1)"] + com_captura * 3 + sem_captura * 2
+
+
+def test_as_capturas_e_os_niveis_nao_mudam_com_o_evento_novo():
+    # A contraprova do teste acima, pelo lado do resultado: a mesma semente
+    # continua produzindo as mesmas capturas e os mesmos niveis finais. Se
+    # algum destes numeros se mexer, o evento consumiu sorteio.
+    ctx = contexto(
+        time=(membro(BULBASAUR, 12), membro(CATERPIE, 8)),
+        linhas=((10, 3, 7), (16, 4, 8)),
+        encontros_base=5,
+    )
+
+    relatorio = resolver(ctx, GeradorSemeado(20261106))
+
+    assert [(c.especie_id, c.nivel, c.ordem_do_encontro) for c in relatorio.capturas] == [
+        (10, 4, 0),
+        (10, 3, 1),
+        (10, 7, 3),
+        (16, 8, 4),
+    ]
+    assert [(f.nivel_antes, f.nivel_depois) for f in relatorio.time] == [(12, 12), (8, 8)]
+    # E esta semente cai justamente no caso que a escolha de posicao do evento
+    # existe para cobrir: a bagagem (6 - 2 = 4) enche na QUINTA batalha, e o
+    # encontro seguinte e uma derrota. Anunciar so na vitoria seguinte deixaria
+    # esta expedicao sem aviso nenhum.
+    assert tipos(relatorio).count(TipoDeEvento.BAGAGEM_CHEIA.value) == 1
+    assert tipos(relatorio)[-3:] == ["BAGAGEM_CHEIA", "CONTRATEMPO", "RETORNO"]
+
+
+# --- 12. A uniao de tipos de evento e a mesma nos dois lados ----------------
+
+
+def test_o_schema_da_api_conhece_todos_os_tipos_de_evento():
+    # `TipoDeEvento` e uniao FECHADA compartilhada com o contrato (plano da
+    # spec 007), e `schemas/expedicoes.py` repete a lista porque schemas/ nao
+    # importa Enum do dominio. Repetida sem conferencia, ela diverge: um tipo
+    # novo no dominio faria o Pydantic recusar o proprio relatorio que o jogo
+    # acabou de gravar, e o sintoma seria um 500 na primeira expedicao que
+    # enchesse a bagagem — longe da causa.
+    from typing import get_args
+
+    from app.schemas.expedicoes import TipoDeEventoLer
+
+    assert set(get_args(TipoDeEventoLer)) == {tipo.value for tipo in TipoDeEvento}
