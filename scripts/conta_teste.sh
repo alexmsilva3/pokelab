@@ -48,13 +48,25 @@ print(json.dumps({
 PY
 }
 
-resposta="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/auth/register" \
+corpo_resposta="$(mktemp)"
+trap 'rm -f "$corpo_resposta"' EXIT
+resposta="$(curl -s -o "$corpo_resposta" -w '%{http_code}' -X POST "$BASE/auth/register" \
   -H 'Content-Type: application/json' -d "$(corpo)")"
 
 case "$resposta" in
   201) echo "conta de desenvolvimento criada: $USUARIO" ;;
   409) echo "conta $USUARIO ja existia" ;;
-  *)   echo "registro recusado (HTTP $resposta)" >&2; exit 1 ;;
+  # O servidor diz qual campo recusou e por que; engolir isso deixa quem roda
+  # o script adivinhando. Aconteceu: senha de 6 caracteres (o minimo e 8)
+  # devolvia apenas "registro recusado (HTTP 422)".
+  *)   echo "registro recusado (HTTP $resposta):" >&2
+       python3 -c 'import json,sys
+erro = json.load(open(sys.argv[1])).get("erro", {})
+print("  " + erro.get("codigo", "?") + ": " + erro.get("mensagem", ""))
+for c in (erro.get("detalhes") or {}).get("campos", []):
+    print("  campo \x27" + str(c.get("campo")) + "\x27: " + str(c.get("mensagem")))' \
+         "$corpo_resposta" >&2 2>/dev/null || cat "$corpo_resposta" >&2
+       exit 1 ;;
 esac
 
 login="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/auth/login" \

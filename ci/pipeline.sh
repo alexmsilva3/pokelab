@@ -51,6 +51,33 @@ imagem_de_teste() {
 # vira falha em minutos, nao em horas) e trap de saida (sair por qualquer
 # motivo leva o container junto).
 
+# A suite roda num banco PROPRIO, nunca no da aplicacao.
+#
+# Ate aqui ela usava o mesmo POSTGRES_DB do .env, e o TRUNCATE que o
+# conftest da entre cada teste levava junto a conta de desenvolvimento, o
+# laboratorio e os Pokemon de quem estivesse jogando. O sintoma chegava como
+# 401 no login, tres vezes, sem nenhuma pista de que a culpa era da suite.
+#
+# O banco de teste e criado e migrado por `preparar_banco_de_teste` na
+# primeira vez que faz falta; depois disso e so mais um banco no mesmo
+# Postgres.
+banco_de_teste() { printf '%s_teste' "$POSTGRES_DB"; }
+
+preparar_banco_de_teste() {
+  local banco; banco="$(banco_de_teste)"
+  if docker compose exec -T db psql -U "$POSTGRES_USER" -d postgres -tAc \
+       "SELECT 1 FROM pg_database WHERE datname='$banco';" 2>/dev/null | grep -q 1; then
+    return 0
+  fi
+  info "criando o banco de teste $banco" >&2
+  docker compose exec -T db createdb -U "$POSTGRES_USER" "$banco" >/dev/null
+  docker run --rm --network "$1" -v "$RAIZ:/src" -w /src/api \
+    -e POSTGRES_HOST=db -e POSTGRES_USER="$POSTGRES_USER" \
+    -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" -e POSTGRES_DB="$banco" \
+    -e SECRET_KEY="$SECRET_KEY" -e ENVIRONMENT=development \
+    "$(imagem_de_teste)" sh -c 'alembic upgrade head && python -m app.seed' >/dev/null 2>&1
+}
+
 PREFIXO_CONTAINER="pokelab_teste"
 # Teto por execucao. A suite completa leva ~90s; cinco minutos e folga generosa
 # e ainda assim curto o bastante para uma trava nao virar problema de horas.
@@ -156,11 +183,13 @@ test_db() {
     flock 9
   fi
 
+  preparar_banco_de_teste "$rede"
+
   rodar_container --network "$rede" -v "$RAIZ:/src" -w /src/api \
     -e POSTGRES_HOST=db \
     -e POSTGRES_USER="$POSTGRES_USER" \
     -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-    -e POSTGRES_DB="$POSTGRES_DB" \
+    -e POSTGRES_DB="$(banco_de_teste)" \
     "$(imagem_de_teste)" pytest -q
 }
 
@@ -177,10 +206,11 @@ test_arquivos() {
   if [ -n "$rede" ] && [ -f "$RAIZ/.env" ]; then
     # shellcheck disable=SC1091
     set -a; . "$RAIZ/.env"; set +a
+    preparar_banco_de_teste "$rede"
     args+=(--network "$rede" -e POSTGRES_HOST=db \
       -e POSTGRES_USER="$POSTGRES_USER" \
       -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-      -e POSTGRES_DB="$POSTGRES_DB")
+      -e POSTGRES_DB="$(banco_de_teste)")
   fi
 
   info "test: $alvos"
