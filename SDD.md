@@ -783,10 +783,12 @@ Foi a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqui to
 
 ---
 
-### Fase 8 — Central de Entregas
+### Fase 8 — Central de Entregas — CONCLUÍDA (2026-11-07)
 *A segunda ocupação de um treinador, a origem da moeda, e o dreno do viveiro.*
 
-Depende da Fase 7: a entrega só faz sentido quando existem Pokémon capturados para entregar. O **viveiro** (4.10) entra aqui junto, porque é ele que dá à entrega o segundo motivo de existir — sem limite de guarda, escoar Pokémon é só uma troca por moeda.
+Spec em [specs/008-central-de-entregas/](specs/008-central-de-entregas/). 1244 testes de backend e 148 de frontend. Quatro lentes mais duas rodadas de mutação: 26 das 27 mutações morrem, e a sobrevivente é ordem de lock, que teste unitário não alcança. O crítico foi a contagem do invariante 25 incluindo Pokémon já comprometidos — aceite e soltura, cada um enxergando a saída agendada do outro como acervo que fica, somavam até zerar o laboratório.
+
+Dependia da Fase 7: a entrega só faz sentido quando existem Pokémon capturados para entregar. O **viveiro** (4.10) entra aqui junto, porque é ele que dá à entrega o segundo motivo de existir — sem limite de guarda, escoar Pokémon é só uma troca por moeda.
 
 Esta fase **não toca o motor da Fase 7**. O viveiro não limita a captura: ele transborda e cobra no despacho seguinte (4.10), então `slots_captura`, o `ContextoDeResolucao` e a resolução ficam como estão. A guarda nova mora no despacho, que é código desta fase.
 
