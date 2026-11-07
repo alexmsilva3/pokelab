@@ -281,8 +281,14 @@ def _exigir_tamanho_do_time(quantidade: int) -> None:
     if quantidade > balance.TAMANHO_MAXIMO_TIME:
         raise TimeCheio(
             f"Um treinador leva no maximo {balance.TAMANHO_MAXIMO_TIME} Pokemon no time; "
-            f"foram escolhidos {quantidade}.",
-            detalhes={"maximo": balance.TAMANHO_MAXIMO_TIME, "escolhidos": quantidade},
+            f"foram escolhidos {quantidade}. Os outros "
+            f"{balance.CAPACIDADE_TOTAL_TREINADOR - balance.TAMANHO_MAXIMO_TIME} lugares da "
+            f"mochila ficam reservados para o que ele capturar em campo.",
+            detalhes={
+                "maximo": balance.TAMANHO_MAXIMO_TIME,
+                "escolhidos": quantidade,
+                "capacidade_total": balance.CAPACIDADE_TOTAL_TREINADOR,
+            },
         )
 
 

@@ -306,7 +306,13 @@ export function MontarTime({
         </div>
         <div>
           <dt>Capacidade de bagagem</dt>
-          <dd>{estadoPrevia?.tipo === 'pronto' ? estadoPrevia.previa.capacidade_bagagem : '--'}</dd>
+          <dd>
+            {estadoPrevia?.tipo === 'pronto' ? estadoPrevia.previa.capacidade_bagagem : '--'}
+            <span className="dica-campo">
+              {' '}
+              capturas que cabem nesta expedicao; cresce quando o time encolhe
+            </span>
+          </dd>
         </div>
       </dl>
 

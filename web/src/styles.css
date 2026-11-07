@@ -1009,3 +1009,13 @@ button:disabled {
 .timeline-relatorio-texto {
   flex: 1 1 auto;
 }
+
+/* Numero sozinho nao ensina a regra: "Capacidade de bagagem: 5" nao diz que os
+   lugares vem de 6 menos o time, nem para que servem. Quem escreveu a regra ja
+   se confundiu com ela uma vez. */
+.dica-campo {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--cor-texto-suave);
+}
