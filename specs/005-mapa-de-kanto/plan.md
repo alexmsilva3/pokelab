@@ -30,7 +30,7 @@ duracao_estimada(custo_viagem, encontros_base, nivel_treinador, bonus_itens, esc
 
 Uma tabela nova, `pokedex_avistamentos`, com chave composta `(laboratorio_id, especie_id, local_id)`, `primeiro_visto_em` e `vezes_visto`.
 
-A Fase 5 **só lê**; quem escreve é a tarefa 7.10, na descarga da Pokédex. Criar agora tem dois motivos: a tela precisa consultar algo, e a migração sai de graça junto das outras em vez de virar uma migração isolada na Fase 7.
+A Fase 5 **só lê**; quem escreve é a tarefa 7.14, na descarga da Pokédex. Criar agora tem dois motivos: a tela precisa consultar algo, e a migração sai de graça junto das outras em vez de virar uma migração isolada na Fase 7.
 
 ## Contratos de API
 

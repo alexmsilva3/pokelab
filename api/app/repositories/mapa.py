@@ -13,9 +13,10 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Local, LocalDesbloqueado, PokedexAvistamento, PokemonEspecie
+from app.models import Local, LocalDesbloqueado, LocalEncontro, PokedexAvistamento, PokemonEspecie
 
 
 def listar_locais(sessao: Session) -> list[Local]:
@@ -37,6 +38,48 @@ def listar_visitados(sessao: Session, laboratorio_id: uuid.UUID) -> set[str]:
             )
         )
     )
+
+
+def buscar_linhas_de_encontro(sessao: Session, local_id: str) -> list[LocalEncontro]:
+    """A tabela de encontros de um local, na ordem canonica (spec 007).
+
+    `especie_id` crescente: a ordem das linhas e parte do resultado do
+    sorteio por peso (Artigo III), e `ContextoDeResolucao` exige que a tabela
+    chegue assim. O `ORDER BY` aqui e a garantia — nunca iterar um `dict` nem
+    um `set` montado em runtime para alimentar o sorteio.
+    """
+    return list(
+        sessao.scalars(
+            select(LocalEncontro)
+            .where(LocalEncontro.local_id == local_id)
+            .order_by(LocalEncontro.especie_id)
+        )
+    )
+
+
+def desbloquear(
+    sessao: Session, laboratorio_id: uuid.UUID, local_id: str, desbloqueado_em: datetime
+) -> bool:
+    """Marca o destino como desbloqueado; idempotente (regra 18, criterio 5).
+
+    `ON CONFLICT DO NOTHING` em vez de ler-depois-escrever: a mesma expedicao
+    resolvida duas vezes, ou duas resolucoes concorrentes do mesmo
+    laboratorio desbloqueando o mesmo local, nao duplicam a linha nem pisam
+    uma na outra. O booleano devolvido diz se ESTA chamada foi quem
+    desbloqueou — falso quando o destino ja estava aberto antes, que e o que
+    `relatorio.local_desbloqueado` precisa para nao anunciar uma novidade que
+    nao e.
+    """
+    instrucao = (
+        pg_insert(LocalDesbloqueado)
+        .values(laboratorio_id=laboratorio_id, local_id=local_id, desbloqueado_em=desbloqueado_em)
+        .on_conflict_do_nothing(
+            index_elements=[LocalDesbloqueado.laboratorio_id, LocalDesbloqueado.local_id]
+        )
+        .returning(LocalDesbloqueado.local_id)
+    )
+    resultado = sessao.execute(instrucao)
+    return resultado.first() is not None
 
 
 @dataclass(frozen=True, slots=True)

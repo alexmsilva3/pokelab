@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Sequence
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.models import Item, ItemEstoque
@@ -73,6 +74,13 @@ def travar_quantidades(
     concorrente que peça os mesmos itens: as duas transacoes travam as
     mesmas linhas sempre na mesma sequencia (plan.md da spec 006, mesmo
     raciocinio de `treinadores_repo.travar_pokemon_envolvidos`).
+
+    Sem `populate_existing` (auditoria da revisao da Fase 7, mesma pergunta
+    feita a `laboratorios_repo.travar`): o despacho nunca chama
+    `buscar_quantidades` antes deste lock na mesma transacao — so a previa faz
+    isso, numa requisicao separada — entao nenhum `ItemEstoque` chega
+    pre-carregado no identity map. Primeira leitura, sem objeto obsoleto para
+    este `with_for_update()` deixar de atualizar.
     """
     if not item_ids:
         return {}
@@ -108,3 +116,23 @@ def debitar_condicional(
         .values(quantidade=ItemEstoque.quantidade - quantidade)
     )
     return resultado.rowcount == 1
+
+
+def creditar(sessao: Session, laboratorio_id: uuid.UUID, item_id: str, quantidade: int) -> None:
+    """Soma `quantidade` ao estoque (regra 18 da spec 007: achados de campo).
+
+    `INSERT ... ON CONFLICT DO UPDATE` em vez de ler-depois-escrever: cria a
+    linha na primeira vez que o laboratorio acha este item, e soma quando ela
+    ja existe — atomico mesmo com duas resolucoes concorrentes do mesmo
+    laboratorio creditando o mesmo item, sem precisar de um `SELECT ... FOR
+    UPDATE` separado antes.
+    """
+    instrucao = pg_insert(ItemEstoque).values(
+        laboratorio_id=laboratorio_id, item_id=item_id, quantidade=quantidade
+    )
+    sessao.execute(
+        instrucao.on_conflict_do_update(
+            index_elements=[ItemEstoque.laboratorio_id, ItemEstoque.item_id],
+            set_={"quantidade": ItemEstoque.quantidade + instrucao.excluded.quantidade},
+        )
+    )

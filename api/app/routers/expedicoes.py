@@ -15,8 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencias import SessaoProfessor, professor_atual
+from app.repositories.expedicoes import LIMITE_MAXIMO, LIMITE_PADRAO
 from app.schemas.expedicoes import (
     EstadoObservadoLer,
+    ExpedicaoClaimLer,
     ExpedicaoEntrada,
     ExpedicaoLer,
     ListaExpedicoes,
@@ -30,11 +32,17 @@ router = APIRouter(prefix="/expeditions", tags=["expeditions"])
 @router.get("", response_model=ListaExpedicoes)
 def listar_expedicoes(
     status: Annotated[list[EstadoObservadoLer] | None, Query()] = None,
+    # Teto no SERVIDOR (revisao da Fase 7, achado 1): o painel quer as N
+    # expedicoes mais recentes do laboratorio, nunca uma pagina especifica de
+    # um historico que so cresce. `le=LIMITE_MAXIMO` recusa com 422 antes de
+    # qualquer consulta rodar; sem ele um cliente mal comportado pediria o
+    # historico inteiro de uma vez, exatamente o que o teto existe para evitar.
+    limite: int = Query(default=LIMITE_PADRAO, ge=1, le=LIMITE_MAXIMO),
     sessao_professor: SessaoProfessor = Depends(professor_atual),
     sessao: Session = Depends(get_db),
 ) -> ListaExpedicoes:
     """Ativas e historico (regra 14: so as do proprio laboratorio)."""
-    return expedicoes_service.listar(sessao, sessao_professor.laboratorio.id, status)
+    return expedicoes_service.listar(sessao, sessao_professor.laboratorio.id, status, limite)
 
 
 @router.post("", response_model=ExpedicaoLer, status_code=201)
@@ -78,3 +86,18 @@ def abortar_expedicao(
 ) -> ExpedicaoLer:
     """Aborta: treinador livre na hora, itens nao voltam (criterio 12)."""
     return expedicoes_service.abortar(sessao, sessao_professor.laboratorio.id, expedicao_id)
+
+
+@router.post("/{expedicao_id}/claim", response_model=ExpedicaoClaimLer)
+def resolver_expedicao(
+    expedicao_id: uuid.UUID,
+    sessao_professor: SessaoProfessor = Depends(professor_atual),
+    sessao: Session = Depends(get_db),
+) -> ExpedicaoClaimLer:
+    """Resolve a expedicao e devolve o relatorio de campo (spec 007, ADR-006).
+
+    Idempotente: a primeira chamada apos o prazo vencer resolve de fato; as
+    seguintes releem o mesmo relatorio ja gravado, sem mudar nada (criterios
+    4 e 5). Expedicao de outro laboratorio: 404, nunca 403 (criterio 22).
+    """
+    return expedicoes_service.claim(sessao, sessao_professor.laboratorio.id, expedicao_id)

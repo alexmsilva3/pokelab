@@ -6,6 +6,11 @@ O seed guarda o que a especie e; o que o individuo tem depende do nivel:
     stat_efetivo = floor(stat_base * 2 * nivel / 100) + 5
     hp_atual     = max(1, round(hp_efetivo * hp_atual_pct / 100))
 
+A Fase 7 acrescenta a recuperacao passiva do SDD 4.8, que anda no sentido
+contrario do desgaste da expedicao:
+
+    hp_recuperado = min(100, hp_atual_pct + minutos // MINUTOS_POR_PONTO_DE_HP)
+
 E a formula das geracoes modernas sem IV, EV nem natureza: dois Pikachu de
 nivel 20 sao identicos, por decisao (SDD 4.2). O HP tem bonus proprio para que
 nivel baixo nao caia em um golpe.
@@ -142,3 +147,41 @@ def hp_atual_absoluto(hp_efetivo: int, hp_atual_pct: int) -> int:
         return 0
     pontos = round(Fraction(hp_efetivo * hp_atual_pct, balance.BASE_PERCENTUAL))
     return min(hp_efetivo, max(balance.HP_MINIMO_VIVO, pontos))
+
+
+# --- Recuperacao passiva (SDD 4.8) ------------------------------------------
+
+
+def hp_recuperado(hp_atual_pct: int, minutos_decorridos: int) -> int:
+    """`min(100, hp_atual_pct + minutos // MINUTOS_POR_PONTO_DE_HP)` (SDD 4.8).
+
+    O Pokemon se cura sozinho enquanto esta no laboratorio, derivado do relogio
+    como manda o ADR-004 — sem job, sem agendador, sem escrita. Em expedicao a
+    enfermaria para: o invariante 18 e cumprido por quem chama, que materializa
+    o HP no despacho e carimba `started_at`, e nao por esta funcao, que nao tem
+    como saber onde o Pokemon esta.
+
+    Tres decisoes valem o comentario.
+
+    **Chegam MINUTOS, nao instantes.** Quem subtrai `agora` de
+    `hp_atualizado_em` e o servico; o Artigo I proibe o dominio de ler o
+    relogio, e receber o numero pronto e o que torna a funcao testavel sem
+    congelar o tempo do processo. A conversao do relogio em minutos de jogo —
+    inclusive `EXPEDITION_TIME_SCALE`, que e ambiente e nao calibragem — e da
+    mesma camada.
+
+    **Minuto negativo nao tira vida.** Um relogio de servidor que ande para
+    tras, ou uma linha com `hp_atualizado_em` no futuro, produziriam uma
+    recuperacao negativa e o Pokemon apareceria mais machucado do que voltou da
+    expedicao. O piso em zero trata isso como "ainda nao passou tempo nenhum",
+    que e a leitura honesta.
+
+    **Nocauteado recupera igual.** A questao 8 do SDD decidiu que ninguem
+    morre: um Pokemon em zero por cento esta exausto, nao perdido, e sobe um
+    ponto no mesmo ritmo de qualquer outro. Sem isso, um time nocauteado ficaria
+    permanentemente fora de jogo e o loop travaria na primeira derrota.
+    """
+    _exigir_pct_valido(hp_atual_pct)
+    minutos = max(0, minutos_decorridos)
+    ganho = minutos // balance.MINUTOS_POR_PONTO_DE_HP
+    return min(balance.BASE_PERCENTUAL, hp_atual_pct + ganho)

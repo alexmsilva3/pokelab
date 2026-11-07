@@ -13,21 +13,30 @@
 
 import type {
   AvatarTreinador,
+  CapturaDoRelatorio,
   EntradaPokedexCapturada,
   EntradaPokedexDesconhecida,
   EntradaPokedexVista,
   EspecieAvistada,
+  EspecieVistaNoRelatorio,
+  EventoDeExpedicao,
   ExpedicaoLer,
+  ExpedicaoResumo,
+  GanhoDeExperiencia,
   ItemCargaLer,
+  ItemDoRelatorio,
   ItemEmEstoque,
   LocalDetalhado,
   LocalNoMapa,
   PerfilCompleto,
   PokemonDetalhe,
+  PokemonDoRelatorio,
   PokemonResumo,
   PreviaExpedicao,
   PreviaTime,
   Professor,
+  RelatorioDeCampo,
+  RespostaClaimExpedicao,
   RespostaExpedicoes,
   RespostaItens,
   RespostaListaPokemon,
@@ -444,25 +453,43 @@ export function localDetalhadoExemplo(
 // --- Expedicoes (spec 006) ------------------------------------------------
 
 export function itemCargaLerExemplo(sobrescritas: Partial<ItemCargaLer> = {}): ItemCargaLer {
-  return { item_id: 'potion', nome: 'Potion', quantidade_levada: 2, ...sobrescritas }
+  return {
+    item_id: 'potion',
+    nome: 'Potion',
+    quantidade_levada: 2,
+    quantidade_consumida: 0,
+    ...sobrescritas,
+  }
 }
 
 /**
  * Uma expedicao em curso, a meio caminho do prazo. `segundos_restantes` e
  * `estado_observado` sao os dois campos que o servidor recalcula a cada
  * leitura (plan.md) — testes de contador sobrescrevem so `segundos_restantes`.
+ *
+ * `seed` usa um valor ACIMA de 2**53-1 de proposito (revisao da Fase 7,
+ * achado 2): um numero pequeno aqui escondia exatamente o defeito que motivou
+ * a troca do tipo para string — nenhum teste via a semente truncada porque a
+ * fixture nunca exercitava uma magnitude real. `RespostaExpedicoes.items` usa
+ * `ExpedicaoResumo` (achado 1: a listagem nao traz `relatorio`); esta funcao
+ * devolve a ficha completa (`ExpedicaoLer`), usada por `GET /expeditions/{id}`
+ * e pelo `claim`.
  */
-export function expedicaoLerExemplo(sobrescritas: Partial<ExpedicaoLer> = {}): ExpedicaoLer {
+export function expedicaoResumoExemplo(sobrescritas: Partial<ExpedicaoResumo> = {}): ExpedicaoResumo {
   return {
     id: 'expedicao-1',
     treinador_id: 'treinador-1',
     treinador_nome: 'Ash',
     local_destino_id: 'route-1',
     local_destino_nome: 'Route 1',
+    local_origem_id: 'pallet-town',
+    local_origem_nome: 'Pallet Town',
     status: 'EM_CURSO',
     estado_observado: 'EM_CURSO',
+    seed: '3500104150819416180',
     started_at: '2026-01-01T12:00:00Z',
     eta: '2026-01-01T12:07:00Z',
+    resolvida_em: null,
     segundos_restantes: 210,
     duracao_minutos: 7,
     dificuldade_calculada: 4,
@@ -472,11 +499,23 @@ export function expedicaoLerExemplo(sobrescritas: Partial<ExpedicaoLer> = {}): E
   }
 }
 
+/**
+ * `relatorio` vem nulo, como toda expedicao ainda `EM_CURSO`; testes de
+ * relatorio sobrescrevem junto com um estado terminal.
+ */
+export function expedicaoLerExemplo(sobrescritas: Partial<ExpedicaoLer> = {}): ExpedicaoLer {
+  const { relatorio = null, ...resumoSobrescritas } = sobrescritas
+  return {
+    ...expedicaoResumoExemplo(resumoSobrescritas),
+    relatorio,
+  }
+}
+
 export function respostaExpedicoesExemplo(
   sobrescritas: Partial<RespostaExpedicoes> = {},
 ): RespostaExpedicoes {
   return {
-    items: [expedicaoLerExemplo()],
+    items: [expedicaoResumoExemplo()],
     total: 1,
     ...sobrescritas,
   }
@@ -494,6 +533,146 @@ export function previaExpedicaoExemplo(
     valido: true,
     codigo: null,
     motivo: null,
+    ...sobrescritas,
+  }
+}
+
+// --- Relatorio de campo (spec 007) ----------------------------------------
+
+export function eventoDeExpedicaoExemplo(
+  sobrescritas: Partial<EventoDeExpedicao> = {},
+): EventoDeExpedicao {
+  return {
+    ordem: 0,
+    tipo: 'PARTIDA',
+    texto: 'Ash partiu de Pallet Town rumo a Route 1.',
+    ocorrido_em_minuto: 0,
+    payload: null,
+    ...sobrescritas,
+  }
+}
+
+export function capturaDoRelatorioExemplo(
+  sobrescritas: Partial<CapturaDoRelatorio> = {},
+): CapturaDoRelatorio {
+  return {
+    especie_id: 10,
+    especie_nome: 'Caterpie',
+    nivel: 5,
+    pokemon_id: 'poke-captura-1',
+    ...sobrescritas,
+  }
+}
+
+export function pokemonDoRelatorioExemplo(
+  sobrescritas: Partial<PokemonDoRelatorio> = {},
+): PokemonDoRelatorio {
+  return {
+    pokemon_id: 'poke-1',
+    especie_id: 1,
+    especie_nome: 'Bulbasaur',
+    nivel_antes: 5,
+    nivel_depois: 7,
+    exp_ganha: 112,
+    hp_antes_pct: 100,
+    hp_depois_pct: 74,
+    evoluiu_para_id: null,
+    evoluiu_para_nome: null,
+    ...sobrescritas,
+  }
+}
+
+export function ganhoDeExperienciaExemplo(
+  sobrescritas: Partial<GanhoDeExperiencia> = {},
+): GanhoDeExperiencia {
+  return { nivel_antes: 1, nivel_depois: 2, exp_ganha: 64, ...sobrescritas }
+}
+
+export function itemDoRelatorioExemplo(
+  sobrescritas: Partial<ItemDoRelatorio> = {},
+): ItemDoRelatorio {
+  return { item_id: 'poke-ball', nome: 'Poke Ball', quantidade: 3, ...sobrescritas }
+}
+
+export function especieVistaNoRelatorioExemplo(
+  sobrescritas: Partial<EspecieVistaNoRelatorio> = {},
+): EspecieVistaNoRelatorio {
+  return { especie_id: 10, nome: 'Caterpie', primeira_vez: true, ...sobrescritas }
+}
+
+/**
+ * Uma expedicao bem-sucedida completa: partida, uma batalha vencida e o
+ * retorno, com uma captura, um Pokemon que subiu de nivel, as tres
+ * experiencias e um item de cada lado (consumido e encontrado). Cobre o que
+ * a tela de relatorio precisa mostrar sem exigir sobrescrita na maioria dos
+ * testes.
+ */
+export function relatorioDeCampoExemplo(
+  sobrescritas: Partial<RelatorioDeCampo> = {},
+): RelatorioDeCampo {
+  return {
+    status: 'CONCLUIDA_SUCESSO',
+    resolvida_em: '2026-01-01T12:40:00Z',
+    encontros: 5,
+    vitorias: 4,
+    derrotas: 1,
+    local_desbloqueado: true,
+    eventos: [
+      eventoDeExpedicaoExemplo(),
+      eventoDeExpedicaoExemplo({
+        ordem: 1,
+        tipo: 'BATALHA',
+        texto: 'Bulbasaur enfrentou Caterpie (nivel 5) e venceu.',
+        ocorrido_em_minuto: 3,
+        payload: {
+          especie_id: 10,
+          especie_nome: 'Caterpie',
+          nivel_selvagem: 5,
+          venceu: true,
+          chance: 0.72,
+          exp_da_batalha: 28,
+        },
+      }),
+      eventoDeExpedicaoExemplo({
+        ordem: 2,
+        tipo: 'RETORNO',
+        texto: 'Ash retornou a Pallet Town.',
+        ocorrido_em_minuto: 7,
+      }),
+    ],
+    capturas: [capturaDoRelatorioExemplo()],
+    time: [pokemonDoRelatorioExemplo()],
+    treinador: ganhoDeExperienciaExemplo(),
+    laboratorio: ganhoDeExperienciaExemplo({ nivel_antes: 1, nivel_depois: 1, exp_ganha: 160 }),
+    itens_consumidos: [itemDoRelatorioExemplo()],
+    itens_encontrados: [
+      itemDoRelatorioExemplo({ item_id: 'potion', nome: 'Potion', quantidade: 1 }),
+    ],
+    especies_vistas: [especieVistaNoRelatorioExemplo()],
+    ...sobrescritas,
+  }
+}
+
+/**
+ * Resposta de `POST /expeditions/{id}/claim`. O servidor manda o relatorio
+ * duas vezes — dentro de `expedicao.relatorio` e solto em `relatorio`
+ * (schemas/expedicoes.py::ExpedicaoClaimLer) — e esta fixture repete isso de
+ * proposito: e o que permite `CartaoExpedicao.tsx` navegar com `expedicao` ja
+ * pronta para `RelatorioDeCampo.tsx`, sem um segundo `GET`.
+ */
+export function respostaClaimExpedicaoExemplo(
+  sobrescritas: Partial<RespostaClaimExpedicao> = {},
+): RespostaClaimExpedicao {
+  const relatorio = relatorioDeCampoExemplo()
+  return {
+    expedicao: expedicaoLerExemplo({
+      status: 'CONCLUIDA_SUCESSO',
+      estado_observado: 'CONCLUIDA_SUCESSO',
+      segundos_restantes: null,
+      resolvida_em: relatorio.resolvida_em,
+      relatorio,
+    }),
+    relatorio,
     ...sobrescritas,
   }
 }

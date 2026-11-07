@@ -14,6 +14,8 @@ O relatório é uma linha do tempo em português: a partida, cada encontro com o
 
 Recebido o relatório, o mundo muda. Os Pokémon capturados estão no laboratório. O time voltou machucado. As espécies enfrentadas entraram na Pokédex, e o laboratório agora sabe **onde** cada uma vive. Se correu bem, o destino está desbloqueado e vira ponto de partida das próximas expedições. O treinador está livre.
 
+O que o relatório chama de **descoberta** é medido contra o que o laboratório sabia **quando o treinador partiu**, não contra o que sabe quando o professor abre o envelope. O treinador saiu de casa sem notícia do que ia ser aprendido na ausência dele, e o relatório é o relato dele. A escolha tem um efeito visível: se outra expedição descobriu Pidgey enquanto esta ainda corria, esta ainda anuncia Pidgey como novidade. É repetição de texto, não erro de registro — a Pokédex não ganha duas entradas nem reescreve a data da primeira vez. Em troca, um relatório nunca muda conforme a hora em que o professor resolve lê-lo.
+
 Se correu mal — três derrotas sem o que curar — o treinador volta mais cedo e de mãos vazias. O relatório existe assim mesmo, e explica a derrota.
 
 Receber o relatório duas vezes não produz dois resultados. O primeiro clique resolve; os seguintes releem o que já ficou gravado.
@@ -33,7 +35,7 @@ Enquanto isso, no laboratório, Pokémon machucados se recuperam sozinhos com o 
 9. Três derrotas **sem cura disponível** encerram a expedição em falha.
 10. Só há tentativa de captura após vitória, com Pokébola na carga e espaço na bagagem.
 11. A bagagem comporta `6 − tamanho_do_time` capturas; atingido o limite, o treinador segue registrando na Pokédex.
-12. Toda espécie enfrentada entra na Pokédex como vista, capturada ou não, e gera avistamento ligando espécie e local.
+12. Toda espécie enfrentada entra na Pokédex como vista, capturada ou não, e gera avistamento ligando espécie e local. Conta como descoberta a espécie que o laboratório ainda não conhecia **no momento em que a expedição partiu**; o que foi aprendido entre a partida e o recebimento do relatório não altera esse julgamento, por força da regra 3.
 13. Nenhum Pokémon ultrapassa o nível 100.
 14. A evolução dispara na resolução quando o nível alcança o exigido pela espécie, e encadeia.
 15. Uma expedição bem-sucedida desbloqueia o destino e dá experiência ao laboratório.
@@ -63,12 +65,13 @@ Enquanto isso, no laboratório, Pokémon machucados se recuperam sozinhos com o 
 14. Dada uma expedição bem-sucedida, quando resolvida, então o laboratório ganha experiência proporcional à dificuldade do destino.
 15. Dada uma expedição que acumula três derrotas sem cura, quando resolvida, então termina em `CONCLUIDA_FALHA`, sem capturas e sem desbloqueio.
 16. Dada uma derrota com Poção na carga, quando a expedição resolve, então a Poção é consumida, o time recupera HP e a contagem de derrotas recomeça.
-17. Dada uma espécie nunca vista, quando é enfrentada, então há evento `DESCOBERTA` e a Pokédex passa a listá-la.
-18. Dada uma espécie já vista no mesmo local, quando é enfrentada de novo, então o avistamento soma uma vez e não há `DESCOBERTA`.
+17. Dada uma espécie que o laboratório não conhecia quando a expedição partiu, quando ela é enfrentada, então há evento `DESCOBERTA` e, recebido o relatório, a Pokédex passa a listá-la.
+18. Dada uma espécie que o laboratório já conhecia quando a expedição partiu, quando ela é enfrentada, então não há `DESCOBERTA` e o avistamento daquele local soma as vezes em que ela apareceu.
 19. Dada uma expedição resolvida, quando o professor abre o relatório, então vê a linha do tempo, o resumo de capturas, a experiência dos três níveis e os itens consumidos.
 20. Dado um Pokémon machucado no laboratório, quando passa tempo suficiente, então seu HP aparece maior sem nenhuma ação do professor.
 21. Dado um Pokémon machucado despachado em expedição, quando a expedição está em curso, então o HP dele não sobe.
 22. Dada uma expedição de outro professor, quando se pede o relatório, então a resposta é 404.
+23. Dada uma espécie que o laboratório passou a conhecer **depois** do despacho desta expedição, quando o relatório dela é recebido, então a espécie ainda consta como `DESCOBERTA` nesse relatório, e o registro que a Pokédex já tinha não é duplicado nem tem a data da primeira vez reescrita.
 
 ## Fora de escopo
 

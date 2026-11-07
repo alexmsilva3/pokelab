@@ -8,6 +8,7 @@ import type {
   ExpedicaoEntrada,
   ExpedicaoLer,
   PreviaExpedicao,
+  RespostaClaimExpedicao,
   RespostaExpedicoes,
   EstadoObservadoExpedicao,
 } from '@/api/tipos'
@@ -26,16 +27,44 @@ import type {
  */
 export const ESTADOS_ATIVOS: EstadoObservadoExpedicao[] = ['EM_CURSO', 'AGUARDANDO_RELATORIO']
 
+/**
+ * Os tres estados terminais: o historico mostra o que ja aconteceu e nao
+ * muda mais. `ABORTADA` entra aqui mesmo sem relatorio (o treinador voltou,
+ * e a decisao foi do professor, nao do campo) — e e por isso que ela nunca
+ * aparece em `ESTADOS_ATIVOS`.
+ */
+export const ESTADOS_HISTORICO: EstadoObservadoExpedicao[] = [
+  'CONCLUIDA_SUCESSO',
+  'CONCLUIDA_FALHA',
+  'ABORTADA',
+]
+
+/**
+ * `limite` acompanha o parametro de mesmo nome em `GET /expeditions`
+ * (revisao da Fase 7, achado 1: `routers/expedicoes.py::listar_expedicoes`).
+ * Omitido, o servidor aplica o proprio teto padrao — por isso o painel de
+ * ativas (`ESTADOS_ATIVOS`) nunca precisa passar nada, e so o historico
+ * (`ESTADOS_HISTORICO`, em `pages/Expedicoes.tsx`) pede um valor explicito.
+ */
 export function listarExpedicoes(
   estados?: EstadoObservadoExpedicao[],
-  sinal?: AbortSignal,
+  opcoes?: { limite?: number; sinal?: AbortSignal },
 ): Promise<RespostaExpedicoes> {
-  const query = estados?.length
-    ? '?' + estados.map((e) => `status=${encodeURIComponent(e)}`).join('&')
-    : ''
-  return request<RespostaExpedicoes>(`/expeditions${query}`, { signal: sinal })
+  const partes: string[] = []
+  if (estados?.length) {
+    partes.push(...estados.map((e) => `status=${encodeURIComponent(e)}`))
+  }
+  if (opcoes?.limite !== undefined) {
+    partes.push(`limite=${opcoes.limite}`)
+  }
+  const query = partes.length ? `?${partes.join('&')}` : ''
+  return request<RespostaExpedicoes>(`/expeditions${query}`, { signal: opcoes?.sinal })
 }
 
+/**
+ * `ExpedicaoLer` ja traz `relatorio` (plan.md, spec 007): nulo ate a
+ * expedicao ser reclamada, ou para sempre numa expedicao `ABORTADA`.
+ */
 export function buscarExpedicao(id: string, sinal?: AbortSignal): Promise<ExpedicaoLer> {
   return request<ExpedicaoLer>(`/expeditions/${encodeURIComponent(id)}`, { signal: sinal })
 }
@@ -66,4 +95,22 @@ export function despacharExpedicao(entrada: ExpedicaoEntrada): Promise<Expedicao
 /** Aborta a expedicao (regra 11): o treinador volta na hora, os itens nao. */
 export function abortarExpedicao(id: string): Promise<ExpedicaoLer> {
   return request<ExpedicaoLer>(`/expeditions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+/**
+ * Reclama o relatorio de campo (spec 007, ADR-006). Resolve a expedicao na
+ * primeira chamada; uma segunda chamada sobre a mesma expedicao devolve o
+ * mesmo corpo sem escrever nada de novo (idempotencia, Artigo VII) — por isso
+ * esta funcao pode ser chamada de novo apos uma falha de rede sem medo de
+ * duplicar o resultado.
+ *
+ * Recusa com 409: `EXPEDICAO_EM_CURSO` quando o prazo ainda nao venceu (o
+ * contador local da tela adiantou), `EXPEDICAO_ABORTADA` quando a expedicao
+ * foi abortada antes de ser resolvida. O chamador mostra a mensagem que o
+ * servidor escreveu, nunca uma propria (Artigo II).
+ */
+export function receberRelatorio(id: string): Promise<RespostaClaimExpedicao> {
+  return request<RespostaClaimExpedicao>(`/expeditions/${encodeURIComponent(id)}/claim`, {
+    method: 'POST',
+  })
 }

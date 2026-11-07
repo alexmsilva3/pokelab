@@ -357,6 +357,8 @@ export interface ItemCargaLer {
   item_id: string
   nome: string
   quantidade_levada: number
+  /** Quanto desta linha o relatorio de campo consumiu (spec 007). Zero ate a expedicao resolver. */
+  quantidade_consumida: number
 }
 
 /** Corpo de POST /expeditions e de POST /expeditions/preview (plan.md). */
@@ -367,31 +369,77 @@ export interface ExpedicaoEntrada {
 }
 
 /**
- * Linha de GET /expeditions e corpo de GET /expeditions/{id}, da resposta de
- * POST /expeditions e de DELETE /expeditions/{id} (plan.md). `estado_observado`
- * e `segundos_restantes` sao recalculados pelo servidor a cada leitura, nunca
- * gravados — e o que impede dois lugares da tela derivarem diferente.
+ * Linha de GET /expeditions (revisao da Fase 7, achado 1): os mesmos campos
+ * de `ExpedicaoLer`, SEM `relatorio`. A listagem e o painel que o professor
+ * abre toda hora, e com o historico sem teto embutir a linha do tempo inteira
+ * de cada expedicao nela multiplicava o peso da resposta por cada relatorio
+ * ja gravado (schemas/expedicoes.py::ExpedicaoResumoLer). Quem quer o
+ * conteudo do relatorio pede a ficha (`GET /expeditions/{id}`) ou reclama
+ * (`POST /expeditions/{id}/claim`) — a listagem so diz QUE existe, atraves de
+ * `estado_observado` e `status`.
  */
-export interface ExpedicaoLer {
+export interface ExpedicaoResumo {
   id: string
   treinador_id: string
   treinador_nome: string
   local_destino_id: string
   local_destino_nome: string
+  local_origem_id: string
+  local_origem_nome: string
   status: StatusExpedicao
   estado_observado: EstadoObservadoExpedicao
+  /**
+   * Semente da resolucao (Artigo III): o mesmo seed sempre produz o mesmo
+   * relatorio. Chega como STRING (revisao da Fase 7, achado 2): a semente
+   * real passa facilmente de 2**53-1, o maior inteiro que o `JSON.parse` do
+   * navegador representa sem perda, e um `number` aqui perderia os digitos
+   * finais antes mesmo de chegar ao estado do React. O campo nunca entra em
+   * conta no cliente (Artigo II) — so exibicao/depuracao —, entao a string
+   * nao custa nada a interface.
+   */
+  seed: string
   started_at: string
   eta: string
-  /** Nunca negativo; zero quando o prazo ja passou (plan.md). */
-  segundos_restantes: number
+  /** Nulo ate a expedicao resolver (spec 007): so existe depois do claim. */
+  resolvida_em: string | null
   duracao_minutos: number
   dificuldade_calculada: number
   poder_time_calculado: number
+  /**
+   * Nulo em estado terminal — o eta de uma expedicao que ja acabou nao conta
+   * mais nada (schemas/expedicoes.py). Nunca negativo quando presente; zero
+   * quando o prazo ja passou (plan.md).
+   */
+  segundos_restantes: number | null
   carga: ItemCargaLer[]
 }
 
+/**
+ * Corpo de GET /expeditions/{id}, da resposta de POST /expeditions e de
+ * DELETE /expeditions/{id} (plan.md, schemas/expedicoes.py::ExpedicaoLer):
+ * a mesma `ExpedicaoResumo`, mais o relatorio. `estado_observado`,
+ * `segundos_restantes` e `relatorio` sao recalculados ou resolvidos pelo
+ * servidor a cada leitura, nunca gravados pelo cliente — e o que impede dois
+ * lugares da tela derivarem diferente.
+ */
+export interface ExpedicaoLer extends ExpedicaoResumo {
+  /**
+   * Nulo ate a expedicao ser reclamada, ou para sempre numa expedicao
+   * ABORTADA (spec 007, ADR-006): o relatorio so nasce em
+   * `POST /expeditions/{id}/claim`, e este `GET` continua sem escrever nada.
+   */
+  relatorio: RelatorioDeCampo | null
+}
+
+/**
+ * Resposta de GET /expeditions. Sem paginacao por pagina/tamanho (plan.md):
+ * limitada por `limite` no SERVIDOR (revisao da Fase 7, achado 1) — o painel
+ * sempre pede as N expedicoes mais recentes do laboratorio, nunca "a pagina
+ * 7". `total` e a contagem de `items` nesta resposta, nao o total historico
+ * do laboratorio.
+ */
 export interface RespostaExpedicoes {
-  items: ExpedicaoLer[]
+  items: ExpedicaoResumo[]
   total: number
 }
 
@@ -414,4 +462,126 @@ export interface PreviaExpedicao {
   valido: boolean
   codigo?: string | null
   motivo?: string | null
+}
+
+// --- Relatorio de campo (spec 007) ----------------------------------------
+
+/**
+ * Uniao fechada em dez valores (specs/007-relatorio-de-campo/plan.md). O JSON
+ * que chega em tempo de execucao nao e garantido pelo compilador: um tipo de
+ * evento novo que o servidor venha a mandar amanha passa por aqui como string
+ * qualquer, e `lib/relatorios.ts` tem default para nao quebrar a tela.
+ */
+export type TipoDeEvento =
+  | 'PARTIDA'
+  | 'BATALHA'
+  | 'CAPTURA'
+  | 'CAPTURA_FALHA'
+  | 'DESCOBERTA'
+  | 'ITEM'
+  | 'CONTRATEMPO'
+  | 'SUBIU_NIVEL'
+  | 'EVOLUCAO'
+  | 'RETORNO'
+
+/**
+ * Uma entrada da linha do tempo do relatorio (plan.md). `payload` varia por
+ * tipo (ex.: a chance do encontro vai junto de `BATALHA`/`CONTRATEMPO`) e a
+ * tela nunca depende do formato interno dele — so de `texto`, ja escrito em
+ * portugues pelo servidor.
+ */
+export interface EventoDeExpedicao {
+  ordem: number
+  tipo: TipoDeEvento
+  texto: string
+  ocorrido_em_minuto: number
+  payload: Record<string, unknown> | null
+}
+
+/** Uma captura do relatorio. O contrato nao manda sprite aqui — so o servidor decide o que expor. */
+export interface CapturaDoRelatorio {
+  especie_id: number
+  especie_nome: string
+  nivel: number
+  pokemon_id: string
+}
+
+/**
+ * O resumo de experiencia de um Pokemon do time (plan.md). `especie_nome` e
+ * sempre a especie ANTES da expedicao; quando ha evolucao, `evoluiu_para_nome`
+ * traz a especie seguinte, e a tela monta "Bulbasaur virou Ivysaur" a partir
+ * dos dois campos, nunca de um unico nome final.
+ */
+export interface PokemonDoRelatorio {
+  pokemon_id: string
+  especie_id: number
+  especie_nome: string
+  nivel_antes: number
+  nivel_depois: number
+  exp_ganha: number
+  hp_antes_pct: number
+  hp_depois_pct: number
+  evoluiu_para_id: number | null
+  evoluiu_para_nome: string | null
+}
+
+/** Ganho de experiencia do treinador ou do laboratorio (plan.md), mesma forma para os dois. */
+export interface GanhoDeExperiencia {
+  nivel_antes: number
+  nivel_depois: number
+  exp_ganha: number
+}
+
+/** Uma linha de item consumido ou encontrado no relatorio (plan.md). */
+export interface ItemDoRelatorio {
+  item_id: string
+  nome: string
+  quantidade: number
+}
+
+/** Uma especie enfrentada na expedicao, com `primeira_vez` marcando a descoberta (plan.md). */
+export interface EspecieVistaNoRelatorio {
+  especie_id: number
+  nome: string
+  primeira_vez: boolean
+}
+
+/**
+ * Corpo de `relatorio` em `POST /expeditions/{id}/claim` e em
+ * `GET /expeditions/{id}` (plan.md, secao "Contratos de API"). So existe para
+ * uma expedicao ja resolvida: o status aqui e sempre um dos dois terminais de
+ * resolucao, nunca `EM_CURSO` nem `ABORTADA` (uma expedicao abortada nunca
+ * chega a `resolver()` e por isso nunca tem relatorio).
+ */
+export interface RelatorioDeCampo {
+  status: Extract<StatusExpedicao, 'CONCLUIDA_SUCESSO' | 'CONCLUIDA_FALHA'>
+  resolvida_em: string
+  encontros: number
+  vitorias: number
+  derrotas: number
+  local_desbloqueado: boolean
+  eventos: EventoDeExpedicao[]
+  capturas: CapturaDoRelatorio[]
+  time: PokemonDoRelatorio[]
+  treinador: GanhoDeExperiencia
+  laboratorio: GanhoDeExperiencia
+  itens_consumidos: ItemDoRelatorio[]
+  itens_encontrados: ItemDoRelatorio[]
+  especies_vistas: EspecieVistaNoRelatorio[]
+}
+
+/**
+ * Corpo de `POST /expeditions/{id}/claim` (plan.md). Uma segunda chamada
+ * sobre a mesma expedicao devolve exatamente o mesmo corpo, sem escrever nada
+ * de novo (idempotencia, Artigo VII) — por isso a tela pode tratar a resposta
+ * sempre do mesmo jeito, resolva ela agora ou so releia o que ja existia.
+ *
+ * `expedicao.relatorio` ja vem preenchido com o mesmo conteudo de
+ * `relatorio` — o servidor manda os dois (schemas/expedicoes.py::ExpedicaoClaimLer).
+ * Por isso `ExpedicaoLer` sozinho (com `relatorio` dentro) basta para
+ * alimentar a tela do relatorio sem um `GET` extra: ver `CartaoExpedicao.tsx`.
+ */
+export interface RespostaClaimExpedicao {
+  expedicao: ExpedicaoLer
+  relatorio: RelatorioDeCampo
 }

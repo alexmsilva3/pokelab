@@ -28,10 +28,12 @@ divergem no primeiro invariante novo, e o professor leva um erro no botao que
 a previa jurava que nao existia.
 
 **A dificuldade e a chance saem arredondadas, e e de proposito.** Elas sao
-gravadas em `dificuldade_calculada` e exibidas ao professor; a Fase 7 vai
-resolver os encontros a partir das mesmas colunas e precisa chegar no mesmo
-numero. Um relatorio que explica a derrota com uma chance diferente da que foi
-mostrada no envio nao explica nada.
+gravadas em `dificuldade_calculada` e exibidas ao professor, e a mesma conta
+refeita a partir das colunas precisa dar o mesmo numero. O que elas **nao**
+sao e o resultado de cada encontro: a resolucao da Fase 7 recalcula a chance
+com o nivel selvagem efetivamente sorteado e o time no desgaste do momento, e
+por isso o numero do despacho e uma estimativa — a interface o rotula assim, e
+o relatorio guarda a chance de cada encontro para explicar a derrota.
 
 A escala de tempo (`EXPEDITION_TIME_SCALE`, ADR-004) **multiplica** e e
 ambiente, nao calibragem: nao esta em `balance.py` e nao e lida aqui dentro —
@@ -40,17 +42,39 @@ chega como argumento e segue para `mapa.duracao_estimada`.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
 from fractions import Fraction
-from math import exp
+from math import exp, floor
 from typing import Any, ClassVar
 from uuid import UUID
 
-from app.game import balance
+from app.game import balance, narrativa
+from app.game.achados import achado_apos_vitoria
+from app.game.aleatoriedade import GeradorAleatorio
+from app.game.capture import (
+    escolher_pokebola,
+    nivel_medio_do_time,
+    probabilidade_de_captura,
+)
+from app.game.cura import aplicar_cura, escolher_cura
+from app.game.encounter import (
+    LinhaDeEncontro,
+    quantidade_de_encontros,
+    sortear_especie,
+    sortear_nivel,
+)
 from app.game.erros import ErroDeDominio
+from app.game.evolucao import EspecieNoCatalogo, evolucoes_apos
+from app.game.experience import (
+    CurvaCrescimento,
+    aplicar_experiencia,
+    curva_de,
+    experiencia_total_para_nivel,
+)
+from app.game.itens import ItemDaMochila, consumir
 from app.game.mapa import (
     DestinoForaDeAlcance,
     GrafoDeLocais,
@@ -58,9 +82,14 @@ from app.game.mapa import (
     duracao_da_rota,
     exigir_destino_alcancavel,
 )
-from app.game.power import PokemonNoTime, poder_do_time
+from app.game.power import PokemonNoTime, poder_do_time, poder_pokemon, somar_stats_base
+from app.game.stats import StatsBase
 from app.game.team import ErroDeTime, capacidade_bagagem
-from app.game.trainers import DESCRICAO_DO_STATUS, StatusTreinador
+from app.game.trainers import (
+    DESCRICAO_DO_STATUS,
+    StatusTreinador,
+    experiencia_ganha_por_batalha,
+)
 
 # --- Erros (Artigo VI) ------------------------------------------------------
 
@@ -376,8 +405,13 @@ def chance_estimada(poder_time: float, dificuldade: float) -> float:
     previa precisa responder alguma coisa sobre todo destino do mapa, e um
     local degenerado no seed derrubaria a tela em vez de aparecer como trivial.
 
-    A Fase 7 chama esta mesma funcao para resolver cada encontro de verdade.
-    Aqui ela serve a previa; sao o mesmo numero de proposito.
+    A Fase 7 chama esta mesma funcao para resolver cada encontro de verdade,
+    mas **com outros argumentos**, e os dois numeros nao coincidem: aqui a
+    dificuldade usa o nivel selvagem MEDIO do local e o time como partiu, e na
+    resolucao ela usa o nivel efetivamente sorteado e o time no desgaste
+    daquele momento. O numero do despacho e uma estimativa, a interface o
+    rotula assim, e o relatorio guarda a chance de cada encontro no payload do
+    evento para que a derrota continue explicavel.
     """
     if poder_time < 0:
         raise PoderInvalido(f"O poder do time nao pode ser negativo: {poder_time}.")
@@ -736,3 +770,1085 @@ def rota_do_despacho(
     montar a tela de escolha de destino.
     """
     return exigir_destino_alcancavel(grafo, visitados, destino_id)
+
+
+# --- Resolucao: entrada (Fase 7, spec 007) ----------------------------------
+#
+# A partir daqui o modulo responde a terceira pergunta da expedicao: **o que
+# aconteceu la fora?**. `resolver` e uma funcao pura — mesmo contexto e mesmo
+# gerador semeado produzem exatamente o mesmo relatorio, evento a evento
+# (criterio 3 da spec 007 e Artigo III). Nenhum estado vem de fora do
+# argumento, nenhum relogio e lido, e o gerador chega pronto.
+#
+# A ORDEM DAS ROLAGENS E CONTRATO, fixada no plano da spec 007:
+#
+#   1  quantidade de encontros                    randint
+#   para cada encontro:
+#   2    especie                                  random (peso acumulado)
+#   3    nivel do selvagem                        randint
+#   4    vitoria ou derrota                       random
+#        em caso de vitoria:
+#   5      desgaste                               randint(3, 8)
+#   6      houve achado                           random
+#   7      qual item                              random (so se houve)
+#   8      tentativa de captura                   random (so se ha tentativa)
+#        em caso de derrota:
+#   5'     desgaste                               randint(15, 30)
+#
+# Uma rolagem a mais, a menos ou trocada de lugar reescreve o resultado de
+# TODA expedicao ja despachada e ainda nao resolvida — a semente esta gravada
+# e o relatorio so existe quando o professor o reclama. O teste de ordem em
+# `tests/test_game_resolucao.py` existe para quebrar ruidosamente nesse dia.
+#
+# A ordem dos EVENTOS e livre: ela e narrativa, nao mecanica. Por isso o
+# desgaste e rolado antes de o evento `BATALHA` ser escrito — o payload do
+# evento mostra quanto custou a vitoria sem que isso mova rolagem nenhuma.
+
+
+class ContextoInvalido(ErroDeExpedicao):
+    """O retrato do envio nao descreve uma expedicao resolvivel.
+
+    Nao e jogada recusada e sim contexto montado errado pelo servico: especie
+    fora do catalogo, time vazio, duracao negativa. Erro proprio para que o
+    router nao o confunda com uma recusa de despacho.
+    """
+
+    codigo: ClassVar[str] = "CONTEXTO_INVALIDO"
+
+
+@dataclass(frozen=True, slots=True)
+class EspecieEmCampo:
+    """Tudo que a resolucao precisa saber de uma especie do seed.
+
+    Reune num objeto so o que cinco modulos do dominio pedem em separado: a
+    `experiencia_base` da formula de experiencia (SDD 4.1), a `taxa_captura`
+    da probabilidade de captura (SDD 4.6), a curva de crescimento, a soma dos
+    stats-base que alimenta o poder (SDD 4.3) e o elo de evolucao.
+
+    Nao e o `EspecieNoCatalogo` de `evolucao.py` nem o substitui: aquele e o
+    minimo que a cadeia de evolucao precisa, e `_catalogo_para_evolucao`
+    projeta este naquele. Duas dataclasses em vez de uma com campos opcionais
+    porque `evolucao.py` nao tem por que conhecer taxa de captura.
+    """
+
+    id: int
+    nome: str
+    experiencia_base: int
+    taxa_captura: int
+    curva_crescimento: CurvaCrescimento | str
+    soma_stats_base: int
+    evolui_para_id: int | None = None
+    evolui_em_nivel: int | None = None
+
+    def __post_init__(self) -> None:
+        curva_de(self.curva_crescimento)
+        if self.experiencia_base < 0:
+            raise ContextoInvalido(
+                f"A especie {self.nome} ({self.id}) tem experiencia base negativa: "
+                f"{self.experiencia_base}."
+            )
+        if self.soma_stats_base < 0:
+            raise ContextoInvalido(
+                f"A especie {self.nome} ({self.id}) tem soma de stats base negativa: "
+                f"{self.soma_stats_base}."
+            )
+
+    @classmethod
+    def a_partir_dos_stats(
+        cls,
+        *,
+        id: int,
+        nome: str,
+        experiencia_base: int,
+        taxa_captura: int,
+        curva_crescimento: CurvaCrescimento | str,
+        stats_base: StatsBase,
+        evolui_para_id: int | None = None,
+        evolui_em_nivel: int | None = None,
+    ) -> EspecieEmCampo:
+        """Atalho para quem tem os seis stats-base em maos, como o servico tem."""
+        return cls(
+            id=id,
+            nome=nome,
+            experiencia_base=experiencia_base,
+            taxa_captura=taxa_captura,
+            curva_crescimento=curva_crescimento,
+            soma_stats_base=somar_stats_base(stats_base),
+            evolui_para_id=evolui_para_id,
+            evolui_em_nivel=evolui_em_nivel,
+        )
+
+
+CatalogoEmCampo = Mapping[int, EspecieEmCampo]
+
+
+@dataclass(frozen=True, slots=True)
+class PokemonDaExpedicao:
+    """Um Pokemon do time, como ele partiu.
+
+    Nao traz curva nem stats-base: os dois sao da ESPECIE e chegam pelo
+    catalogo. Repeti-los aqui abriria a porta para um Pokemon cuja curva
+    discorda da propria especie — e `aplicar_experiencia` recusa nivel que nao
+    corresponde a experiencia, entao a divergencia so apareceria no meio da
+    resolucao, com o professor esperando o relatorio.
+    """
+
+    id: UUID
+    especie_id: int
+    nivel: int
+    experiencia: int
+    hp_atual_pct: int
+
+
+@dataclass(frozen=True, slots=True)
+class TreinadorEmCampo:
+    """O treinador do ponto de vista do relatorio.
+
+    Separado de `TreinadorParaExpedicao` porque as duas perguntas sao
+    diferentes: o despacho quer saber o `status` (ele pode sair?), e a
+    resolucao quer saber o `nome` (quem assina o relatorio). Juntar as duas
+    obrigaria o servico a carregar um campo inutil em cada chamada.
+    """
+
+    id: UUID
+    nome: str
+    nivel: int
+
+
+@dataclass(frozen=True, slots=True)
+class DestinoEmCampo:
+    """O destino com o que a resolucao precisa, alem da dificuldade.
+
+    Compoe `LocalDaExpedicao` em vez de repetir os campos dele: a faixa de
+    nivel selvagem e o `nivel_dificuldade` ja sao validados la, e duplica-los
+    criaria dois lugares onde o seed pode discordar de si mesmo.
+    """
+
+    local: LocalDaExpedicao
+    nome: str
+    encontros_base: int
+    linhas_de_encontro: tuple[LinhaDeEncontro, ...]
+
+    def __post_init__(self) -> None:
+        if self.encontros_base < 0:
+            raise ContextoInvalido(
+                f"O destino {self.nome} declara encontros base negativo: {self.encontros_base}."
+            )
+        if not self.linhas_de_encontro:
+            raise ContextoInvalido(
+                f"O destino {self.nome} nao tem tabela de encontros, e sem ela a expedicao "
+                "nao tem o que encontrar."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ContextoDeResolucao:
+    """O retrato imutavel do envio: tudo que a resolucao pode olhar.
+
+    O servico monta este objeto dentro da transacao, chama `resolver` e grava o
+    que voltou. Nada aqui e lido do banco depois, e e isso que torna o
+    criterio 3 testavel sem infraestrutura: o mesmo contexto com a mesma
+    semente da o mesmo relatorio em qualquer maquina, hoje ou daqui a um ano.
+
+    `linhas_de_encontro` ja chega na ordem canonica (`especie_id` crescente) —
+    o sorteio por peso acumula na ordem recebida, e uma tabela em outra ordem
+    muda o resultado da mesma semente. Quem monta o contexto garante a ordem
+    com `ORDER BY especie_id`, ou passa por `encounter.ordenar_linhas`.
+
+    `nomes_de_itens` existe para que o texto do evento `ITEM` possa dizer
+    "Poke Ball" e nao "poke-ball": o achado sai de `balance.TABELA_DE_ACHADOS`,
+    que so guarda identificadores, e pode nem estar na carga. Faltando o nome,
+    o identificador aparece no lugar — um texto feio e melhor que uma
+    resolucao derrubada.
+    """
+
+    treinador: TreinadorEmCampo
+    time: tuple[PokemonDaExpedicao, ...]
+    destino: DestinoEmCampo
+    origem_nome: str
+    catalogo: CatalogoEmCampo
+    carga: tuple[ItemDaMochila, ...] = ()
+    especies_vistas: frozenset[int] = frozenset()
+    nomes_de_itens: Mapping[str, str] = field(default_factory=dict)
+    duracao_minutos: int = 0
+
+    def __post_init__(self) -> None:
+        if not self.time:
+            raise TimeVazio(
+                "Esta expedicao partiu sem nenhum Pokemon no time, e sem time nao ha o que "
+                "resolver.",
+                detalhes={"treinador_id": str(self.treinador.id)},
+            )
+        capacidade_bagagem(len(self.time))
+        if len({membro.id for membro in self.time}) != len(self.time):
+            raise ContextoInvalido("O mesmo Pokemon aparece duas vezes no time da expedicao.")
+        if self.duracao_minutos < 0:
+            raise ContextoInvalido(
+                f"A duracao da expedicao chegou negativa: {self.duracao_minutos} minutos."
+            )
+        for membro in self.time:
+            _exigir_especie_no_catalogo(self.catalogo, membro.especie_id, "do time")
+        for linha in self.destino.linhas_de_encontro:
+            _exigir_especie_no_catalogo(self.catalogo, linha.especie_id, "da tabela de encontros")
+        _exigir_cadeias_de_evolucao_coerentes(self.catalogo)
+
+    @property
+    def nivel_dificuldade(self) -> int:
+        """Atalho para o numero que a dificuldade de cada encontro multiplica."""
+        return self.destino.local.nivel_dificuldade
+
+
+def _exigir_especie_no_catalogo(
+    catalogo: CatalogoEmCampo, especie_id: int, origem: str
+) -> EspecieEmCampo:
+    especie = catalogo.get(especie_id)
+    if especie is None:
+        raise ContextoInvalido(
+            f"A especie {especie_id} {origem} nao esta no catalogo do contexto, e sem ela a "
+            "resolucao nao sabe nem o nome nem a experiencia base dela."
+        )
+    return especie
+
+
+def _exigir_cadeias_de_evolucao_coerentes(catalogo: CatalogoEmCampo) -> None:
+    """Toda evolucao presente no catalogo aponta para alguem e mantem a curva.
+
+    A conferencia e feita na construcao do contexto, antes de qualquer
+    escrita, e nao no meio do laco. O motivo e a curva: nivel e experiencia sao
+    o mesmo numero lido de dois jeitos, e uma evolucao que trocasse a curva de
+    crescimento faria o Pokemon gravado ficar com um nivel que a nova curva nao
+    confirma — `aplicar_experiencia` recusaria esse Pokemon na expedicao
+    SEGUINTE, longe da causa. O seed de Kanto nao tem nenhum caso assim; esta
+    guarda existe para o dia em que tiver.
+    """
+    for especie in catalogo.values():
+        if especie.evolui_para_id is None:
+            continue
+        proxima = catalogo.get(especie.evolui_para_id)
+        if proxima is None:
+            raise ContextoInvalido(
+                f"A especie {especie.nome} ({especie.id}) evolui para "
+                f"{especie.evolui_para_id}, que nao esta no catalogo do contexto."
+            )
+        if curva_de(proxima.curva_crescimento) is not curva_de(especie.curva_crescimento):
+            raise ContextoInvalido(
+                f"A especie {especie.nome} ({especie.id}) evolui para {proxima.nome} "
+                f"({proxima.id}) e as duas tem curvas de crescimento diferentes "
+                f"({especie.curva_crescimento} e {proxima.curva_crescimento}): a experiencia "
+                "acumulada deixaria de corresponder ao nivel gravado."
+            )
+
+
+# --- Resolucao: saida -------------------------------------------------------
+
+
+class TipoDeEvento(StrEnum):
+    """Os tipos da linha do tempo, uniao fechada compartilhada com o frontend.
+
+    Fechada de proposito (contratos de API do plano da spec 007): a tela
+    desenha um icone por tipo, e um tipo novo chegando do servidor apareceria
+    sem icone nenhum. Acrescentar um exige mexer nos dois lados no mesmo
+    commit.
+
+    `ITEM` significa item ACHADO em campo. O item CONSUMIDO — a Pocao gasta
+    depois de uma derrota — vai no texto e no payload do `CONTRATEMPO`, pelo
+    mesmo motivo: dois significados no mesmo tipo fariam a tela desenhar o
+    icone de achado para uma Pocao que saiu da mochila.
+    """
+
+    PARTIDA = "PARTIDA"
+    BATALHA = "BATALHA"
+    CAPTURA = "CAPTURA"
+    CAPTURA_FALHA = "CAPTURA_FALHA"
+    DESCOBERTA = "DESCOBERTA"
+    ITEM = "ITEM"
+    CONTRATEMPO = "CONTRATEMPO"
+    SUBIU_NIVEL = "SUBIU_NIVEL"
+    EVOLUCAO = "EVOLUCAO"
+    RETORNO = "RETORNO"
+
+
+@dataclass(frozen=True, slots=True)
+class EventoDeCampo:
+    """Uma linha do relatorio: o que o professor le e o que a tela desenha.
+
+    `texto` e para ler, `payload` e para renderizar. A separacao e deliberada:
+    a interface nunca extrai numero de frase, e mudar a redacao na Fase 9 nao
+    quebra tela nenhuma.
+    """
+
+    ordem: int
+    tipo: TipoDeEvento
+    texto: str
+    ocorrido_em_minuto: int
+    payload: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.ordem < 0:
+            raise ContextoInvalido(f"A ordem de um evento nao pode ser negativa: {self.ordem}.")
+        if self.ocorrido_em_minuto < 0:
+            raise ContextoInvalido(
+                f"Um evento nao acontece antes da partida: minuto {self.ocorrido_em_minuto}."
+            )
+        if len(self.texto) > balance.LIMITE_TEXTO_DO_EVENTO:
+            raise narrativa.TextoLongoDemais(
+                f"O texto do evento {self.tipo.value} tem {len(self.texto)} caracteres e o "
+                f"limite da coluna e {balance.LIMITE_TEXTO_DO_EVENTO}."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class PokemonAposExpedicao:
+    """O antes e o depois de um Pokemon do time, pronto para o servico gravar.
+
+    `especie_id` e a especie com que o Pokemon PARTIU; `evoluiu_para_id`, a que
+    ele tem na volta, ou nulo. A coluna a gravar e `especie_final_id`, que ja
+    resolve os dois casos — assim o servico nao precisa repetir o `if`.
+    """
+
+    pokemon_id: UUID
+    especie_id: int
+    especie_nome: str
+    nivel_antes: int
+    nivel_depois: int
+    experiencia_antes: int
+    experiencia_depois: int
+    hp_antes_pct: int
+    hp_depois_pct: int
+    evoluiu_para_id: int | None = None
+    evoluiu_para_nome: str | None = None
+
+    @property
+    def experiencia_ganha(self) -> int:
+        """O que de fato entrou, ja descontado o excedente do nivel 100."""
+        return self.experiencia_depois - self.experiencia_antes
+
+    @property
+    def especie_final_id(self) -> int:
+        """A especie a gravar: a nova, se evoluiu, senao a de sempre."""
+        return self.evoluiu_para_id if self.evoluiu_para_id is not None else self.especie_id
+
+    @property
+    def subiu_de_nivel(self) -> bool:
+        return self.nivel_depois > self.nivel_antes
+
+
+@dataclass(frozen=True, slots=True)
+class CapturaEmCampo:
+    """Um Pokemon que vem para o laboratorio, com tudo que a linha nova precisa.
+
+    `experiencia` vem junto e nao e opcional: `aplicar_experiencia` RECUSA um
+    Pokemon cujo nivel nao corresponda a experiencia gravada, entao um
+    capturado que nascesse com nivel 7 e experiencia 0 derrubaria a PROXIMA
+    expedicao dele. O dominio entrega o par ja coerente para que o servico nao
+    tenha como errar.
+
+    `hp_atual_pct` vem cheio: o selvagem capturado chega descansado ao
+    laboratorio, e a enfermaria da recuperacao passiva (SDD 4.8) nao tem nada
+    a fazer com ele.
+    """
+
+    especie_id: int
+    especie_nome: str
+    nivel: int
+    experiencia: int
+    hp_atual_pct: int
+    ordem_do_encontro: int
+
+
+@dataclass(frozen=True, slots=True)
+class ItemDoRelatorio:
+    """Um item consumido em campo ou achado em campo, ja somado por identificador."""
+
+    item_id: str
+    nome: str
+    quantidade: int
+
+
+@dataclass(frozen=True, slots=True)
+class AvistamentoEmCampo:
+    """O que a Pokedex aprende desta expedicao sobre uma especie.
+
+    `primeira_vez` diz se houve `DESCOBERTA`; `vezes` e quantos encontros desta
+    expedicao foram com ela, que e o numero que o avistamento soma (regra 12 e
+    criterio 18 da spec 007).
+    """
+
+    especie_id: int
+    especie_nome: str
+    vezes: int
+    primeira_vez: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RelatorioDeCampo:
+    """Tudo que o servico precisa gravar, e nada que ele precise recalcular.
+
+    O status so pode ser `CONCLUIDA_SUCESSO` ou `CONCLUIDA_FALHA`: a resolucao
+    sempre termina a expedicao. `ABORTADA` e decisao do professor, nao
+    resultado de campo.
+
+    Numa falha, `capturas` vem VAZIA (regra 16 da spec 007) mesmo que a linha
+    do tempo tenha eventos `CAPTURA`: o Pokemon foi capturado em campo e se
+    perdeu na fuga, e o texto do `RETORNO` diz isso. O que a falha preserva e
+    a experiencia ganha nas batalhas vencidas antes dela, os avistamentos e os
+    itens achados; o que ela nao da e captura, desbloqueio e experiencia de
+    laboratorio.
+    """
+
+    status: StatusExpedicao
+    eventos: tuple[EventoDeCampo, ...]
+    time: tuple[PokemonAposExpedicao, ...]
+    capturas: tuple[CapturaEmCampo, ...]
+    itens_consumidos: tuple[ItemDoRelatorio, ...]
+    itens_encontrados: tuple[ItemDoRelatorio, ...]
+    avistamentos: tuple[AvistamentoEmCampo, ...]
+    experiencia_treinador: int
+    experiencia_laboratorio: int
+    encontros: int
+    vitorias: int
+    derrotas: int
+    duracao_efetiva_minutos: int
+
+    @property
+    def sucesso(self) -> bool:
+        return self.status is StatusExpedicao.CONCLUIDA_SUCESSO
+
+    @property
+    def desbloqueia_destino(self) -> bool:
+        """Regra 15 e 16 da spec 007: so o sucesso desbloqueia o destino.
+
+        Se o local JA estava desbloqueado e assunto de quem grava — o dominio
+        nao recebe a lista de visitados na resolucao e nao tem como saber.
+        """
+        return self.sucesso
+
+
+# --- Resolucao: estado interno do laco --------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class _EstadoDoMembro:
+    """O Pokemon do time durante a expedicao, substituido a cada mudanca.
+
+    Imutavel como todo o resto: cada desgaste, cada ganho de experiencia e cada
+    evolucao produzem um estado novo com `replace`. Guardar o inicial ao lado
+    do corrente e o que permite montar o antes-e-depois do relatorio sem o
+    servico ter de lembrar de nada.
+    """
+
+    pokemon_id: UUID
+    especie: EspecieEmCampo
+    especie_inicial: EspecieEmCampo
+    nivel: int
+    experiencia: int
+    hp_atual_pct: int
+    nivel_inicial: int
+    experiencia_inicial: int
+    hp_inicial_pct: int
+
+    @property
+    def no_time(self) -> PokemonNoTime:
+        """A visao que `power.py` e `cura.py` tem deste Pokemon agora."""
+        return PokemonNoTime(
+            nivel=self.nivel,
+            soma_stats_base=self.especie.soma_stats_base,
+            hp_atual_pct=self.hp_atual_pct,
+        )
+
+    @property
+    def evoluiu(self) -> bool:
+        return self.especie.id != self.especie_inicial.id
+
+    def no_relatorio(self) -> PokemonAposExpedicao:
+        return PokemonAposExpedicao(
+            pokemon_id=self.pokemon_id,
+            especie_id=self.especie_inicial.id,
+            especie_nome=self.especie_inicial.nome,
+            nivel_antes=self.nivel_inicial,
+            nivel_depois=self.nivel,
+            experiencia_antes=self.experiencia_inicial,
+            experiencia_depois=self.experiencia,
+            hp_antes_pct=self.hp_inicial_pct,
+            hp_depois_pct=self.hp_atual_pct,
+            evoluiu_para_id=self.especie.id if self.evoluiu else None,
+            evoluiu_para_nome=self.especie.nome if self.evoluiu else None,
+        )
+
+
+def _membros_iniciais(contexto: ContextoDeResolucao) -> tuple[_EstadoDoMembro, ...]:
+    membros: list[_EstadoDoMembro] = []
+    for pokemon in contexto.time:
+        especie = _exigir_especie_no_catalogo(contexto.catalogo, pokemon.especie_id, "do time")
+        membros.append(
+            _EstadoDoMembro(
+                pokemon_id=pokemon.id,
+                especie=especie,
+                especie_inicial=especie,
+                nivel=pokemon.nivel,
+                experiencia=pokemon.experiencia,
+                hp_atual_pct=pokemon.hp_atual_pct,
+                nivel_inicial=pokemon.nivel,
+                experiencia_inicial=pokemon.experiencia,
+                hp_inicial_pct=pokemon.hp_atual_pct,
+            )
+        )
+        # Calcula o poder uma vez agora, e joga fora: a conta valida nivel, hp
+        # e stats (Artigo VI), e um dado fora de faixa deve reclamar na entrada
+        # e nao no meio do quarto encontro, com o professor esperando.
+        poder_pokemon(membros[-1].no_time)
+    return tuple(membros)
+
+
+def _catalogo_para_evolucao(catalogo: CatalogoEmCampo) -> dict[int, EspecieNoCatalogo]:
+    """Projeta o catalogo da resolucao no que `evolucao.py` pede."""
+    return {
+        especie_id: EspecieNoCatalogo(
+            id=especie.id,
+            nome=especie.nome,
+            evolui_para_id=especie.evolui_para_id,
+            evolui_em_nivel=especie.evolui_em_nivel,
+        )
+        for especie_id, especie in catalogo.items()
+    }
+
+
+def _anotar(
+    eventos: list[EventoDeCampo],
+    tipo: TipoDeEvento,
+    minuto: int,
+    texto: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    """Acrescenta o evento com `ordem` igual a posicao dele na linha do tempo.
+
+    A ordem e a posicao, e nao um contador a parte, porque dois contadores que
+    deveriam andar juntos sempre acabam discordando — e aqui a discordancia
+    apareceria como linha do tempo embaralhada na tela do professor.
+    """
+    eventos.append(
+        EventoDeCampo(
+            ordem=len(eventos),
+            tipo=tipo,
+            texto=texto,
+            ocorrido_em_minuto=minuto,
+            payload=payload,
+        )
+    )
+
+
+def minuto_do_encontro(duracao_minutos: int, indice: int, quantidade: int) -> int:
+    """Distribui os encontros ao longo da duracao gravada da expedicao.
+
+    Os encontros caem em intervalos iguais ENTRE a partida e o retorno: com
+    duracao 60 e tres encontros, eles acontecem nos minutos 15, 30 e 45. Nem a
+    partida nem o retorno disputam lugar com um encontro, que e o que a
+    divisao por `quantidade + 1` garante.
+
+    Divisao inteira: o minuto e o que a tela mostra a esquerda da linha do
+    tempo, e meio minuto nao e informacao para ninguem.
+    """
+    if quantidade < 1:
+        raise ContextoInvalido(f"Uma expedicao tem ao menos um encontro; vieram {quantidade}.")
+    return duracao_minutos * (indice + 1) // (quantidade + 1)
+
+
+def experiencia_de_batalha(experiencia_base: int, nivel_derrotado: int) -> int:
+    """`experiencia_base * nivel_derrotado // DIVISOR_EXP` (SDD 4.1).
+
+    A divisao inteira trunca de proposito: experiencia e contador, nao medida.
+    """
+    if experiencia_base < 0:
+        raise ContextoInvalido(f"A experiencia base chegou negativa: {experiencia_base}.")
+    return experiencia_base * nivel_derrotado // balance.DIVISOR_EXP
+
+
+def experiencia_de_laboratorio(nivel_dificuldade: int) -> int:
+    """`EXP_LAB_POR_EXPEDICAO * (1 + nivel_dificuldade * BONUS)` (SDD 4.1).
+
+    So o sucesso paga (regra 15 da spec 007); a falha devolve zero. A conta
+    corre em racional exato e e truncada uma unica vez, no fim, pelo mesmo
+    motivo de `power.py`: a calibragem da Fase 9 nao deve mudar o resultado por
+    um arredondamento intermediario.
+    """
+    if nivel_dificuldade < 0:
+        raise LocalInvalido(f"O nivel de dificuldade chegou negativo: {nivel_dificuldade}.")
+    bonus = 1 + nivel_dificuldade * _fracao(balance.BONUS_EXP_LAB_POR_DIFICULDADE)
+    return floor(balance.EXP_LAB_POR_EXPEDICAO * bonus)
+
+
+def dificuldade_do_encontro(nivel_selvagem: int, nivel_dificuldade_local: int) -> float:
+    """A dificuldade do encontro que de fato aconteceu (SDD 4.3).
+
+    Difere da `dificuldade_do_local` gravada no despacho em um ponto que muda
+    tudo: ali o nivel selvagem e a MEDIA da faixa do local, aqui e o nivel
+    efetivamente sorteado. Um Caterpie de nivel 3 e um de nivel 7 saem do mesmo
+    local com dificuldades diferentes, e e por isso que a chance do despacho e
+    estimativa e a chance de cada encontro vai no payload do evento.
+    """
+    bruta = nivel_selvagem * nivel_dificuldade_local * _fracao(balance.FATOR_DIFICULDADE)
+    return _arredondar(bruta, balance.CASAS_DECIMAIS_DIFICULDADE)
+
+
+def _lider(membros: Sequence[_EstadoDoMembro]) -> str:
+    """O nome que a narrativa poe na frente da linha.
+
+    O primeiro Pokemon de pe, ou o primeiro do time quando todos cairam. Nao
+    tem efeito mecanico nenhum: a chance sai do poder do time inteiro
+    (ADR-003), e este nome serve so para a frase nao ser impessoal.
+    """
+    for membro in membros:
+        if membro.hp_atual_pct > 0:
+            return membro.especie.nome
+    return membros[0].especie.nome
+
+
+def _desgastar(membros: Sequence[_EstadoDoMembro], pontos: int) -> tuple[_EstadoDoMembro, ...]:
+    """Tira os mesmos pontos de hp de todo o time, com piso em zero.
+
+    Piso e nao negativo: `hp_atual_pct` e contador de 0 a 100, e um nocauteado
+    nao fica mais nocauteado. Quem ja estava em zero continua em zero, e
+    continua contando como participante na divisao de experiencia — ele estava
+    la.
+    """
+    return tuple(
+        replace(membro, hp_atual_pct=max(0, membro.hp_atual_pct - pontos)) for membro in membros
+    )
+
+
+def _ganhar_experiencia(
+    membro: _EstadoDoMembro,
+    ganho: int,
+    catalogo: CatalogoEmCampo,
+    catalogo_de_evolucao: Mapping[int, EspecieNoCatalogo],
+    eventos: list[EventoDeCampo],
+    minuto: int,
+) -> _EstadoDoMembro:
+    """Aplica o ganho a um Pokemon e escreve o que isso produziu.
+
+    Um `SUBIU_NIVEL` quando o nivel mudou — nunca quando nao mudou, inclusive
+    no nivel 100, onde a experiencia excedente e descartada (criterio 12 da
+    spec 007). Depois, um `EVOLUCAO` por etapa da cadeia que o novo nivel
+    dispara: a cadeia encadeia, e um salto do nivel 15 ao 33 produz os dois
+    eventos, em ordem (criterio 11).
+
+    Nada aqui consome o gerador. Experiencia, nivel e evolucao sao
+    deterministicos, e e por isso que eles nao aparecem na ordem das rolagens.
+    """
+    resultado = aplicar_experiencia(
+        membro.especie.curva_crescimento, membro.nivel, membro.experiencia, ganho
+    )
+    atual = replace(membro, nivel=resultado.nivel_depois, experiencia=resultado.experiencia_depois)
+    if resultado.subiu:
+        _anotar(
+            eventos,
+            TipoDeEvento.SUBIU_NIVEL,
+            minuto,
+            narrativa.texto_de_subiu_nivel(
+                len(eventos),
+                pokemon=atual.especie.nome,
+                antes=resultado.nivel_antes,
+                depois=resultado.nivel_depois,
+            ),
+            {
+                "pokemon_id": str(atual.pokemon_id),
+                "especie_id": atual.especie.id,
+                "especie_nome": atual.especie.nome,
+                "nivel_antes": resultado.nivel_antes,
+                "nivel_depois": resultado.nivel_depois,
+                "experiencia": resultado.experiencia_depois,
+                "experiencia_ganha": resultado.experiencia_aplicada,
+            },
+        )
+    for elo in evolucoes_apos(atual.especie.id, atual.nivel, catalogo_de_evolucao):
+        anterior = atual.especie
+        proxima = _exigir_especie_no_catalogo(catalogo, elo.id, "da cadeia de evolucao")
+        atual = replace(atual, especie=proxima)
+        _anotar(
+            eventos,
+            TipoDeEvento.EVOLUCAO,
+            minuto,
+            narrativa.texto_de_evolucao(len(eventos), antes=anterior.nome, depois=proxima.nome),
+            {
+                "pokemon_id": str(atual.pokemon_id),
+                "especie_id_antes": anterior.id,
+                "especie_nome_antes": anterior.nome,
+                "especie_id": proxima.id,
+                "especie_nome": proxima.nome,
+                "nivel": atual.nivel,
+            },
+        )
+    return atual
+
+
+def _nome_do_item(contexto: ContextoDeResolucao, item_id: str) -> str:
+    """O nome de exibicao do item, com o identificador como ultimo recurso."""
+    for item in contexto.carga:
+        if item.item_id == item_id:
+            return item.nome
+    return contexto.nomes_de_itens.get(item_id, item_id)
+
+
+def _somados(
+    quantidades: Mapping[str, int], contexto: ContextoDeResolucao
+) -> tuple[ItemDoRelatorio, ...]:
+    """Transforma o acumulado por identificador em linhas ordenadas do relatorio.
+
+    Ordenado por `item_id` porque o servico trava as linhas de estoque nessa
+    ordem para nao abracar deadlock com outra resolucao concorrente — mesma
+    razao de `DespachoCalculado.debitos`.
+    """
+    return tuple(
+        ItemDoRelatorio(item_id=item_id, nome=_nome_do_item(contexto, item_id), quantidade=total)
+        for item_id, total in sorted(quantidades.items())
+        if total > 0
+    )
+
+
+# --- Resolucao: o laco ------------------------------------------------------
+
+
+def resolver(contexto: ContextoDeResolucao, gerador: GeradorAleatorio) -> RelatorioDeCampo:
+    """Resolve a expedicao inteira e devolve o relatorio de campo.
+
+    Funcao pura: mesmo contexto e mesmo gerador semeado produzem byte a byte o
+    mesmo relatorio, evento a evento (criterio 3 da spec 007, invariante 19 e
+    Artigo III). O gerador chega semeado de fora, o relogio nao e lido e nada
+    e persistido aqui — quem grava e o servico, com o que esta no retorno.
+
+    **A chance muda a cada encontro.** O poder do time e recalculado no inicio
+    de cada iteracao, com o hp do momento, e a dificuldade usa o nivel
+    efetivamente sorteado. O quinto encontro e mais duro que o primeiro porque
+    o time chega nele machucado — e isso e mecanica, nao detalhe: e o que faz
+    expedicao longa ser uma aposta.
+
+    **Time inteiro a zero nao divide por zero.** O poder vai a zero, a razao
+    poder/dificuldade vai a zero e a sigmoide entrega o piso de
+    `P_VITORIA_MINIMA`: a expedicao provavelmente falha por tres derrotas, que
+    e o desenho funcionando. O unico divisor do caminho e a dificuldade, e
+    `chance_estimada` ja trata dificuldade zero devolvendo o teto.
+
+    **A captura para, o registro continua.** Atingida a capacidade da bagagem
+    ou acabadas as Pokebolas, nao ha mais tentativa — mas todo encontro
+    seguinte continua virando avistamento na Pokedex (invariante 11, criterio
+    7 da spec 007).
+    """
+    eventos: list[EventoDeCampo] = []
+    membros = _membros_iniciais(contexto)
+    catalogo_de_evolucao = _catalogo_para_evolucao(contexto.catalogo)
+    carga = tuple(contexto.carga)
+
+    consumidos: dict[str, int] = {}
+    encontrados: dict[str, int] = {}
+    capturas: list[CapturaEmCampo] = []
+    vezes_vista: dict[int, int] = {}
+    descobertas: set[int] = set()
+
+    experiencia_treinador = 0
+    vitorias = 0
+    derrotas = 0
+    derrotas_sem_cura = 0
+    status = StatusExpedicao.CONCLUIDA_SUCESSO
+
+    _anotar(
+        eventos,
+        TipoDeEvento.PARTIDA,
+        0,
+        narrativa.texto_de_partida(
+            len(eventos),
+            treinador=contexto.treinador.nome,
+            origem=contexto.origem_nome,
+            destino=contexto.destino.nome,
+        ),
+    )
+
+    # Rolagem 1: quantos encontros esta expedicao teve.
+    quantidade = quantidade_de_encontros(contexto.destino.encontros_base, gerador)
+    minuto = 0
+
+    for indice in range(quantidade):
+        minuto = minuto_do_encontro(contexto.duracao_minutos, indice, quantidade)
+
+        # Rolagens 2 e 3: com quem foi o encontro, e de que nivel.
+        linha = sortear_especie(contexto.destino.linhas_de_encontro, gerador)
+        nivel_selvagem = sortear_nivel(linha, gerador)
+        especie = _exigir_especie_no_catalogo(
+            contexto.catalogo, linha.especie_id, "da tabela de encontros"
+        )
+
+        vezes_vista[especie.id] = vezes_vista.get(especie.id, 0) + 1
+        if especie.id not in contexto.especies_vistas and especie.id not in descobertas:
+            descobertas.add(especie.id)
+            _anotar(
+                eventos,
+                TipoDeEvento.DESCOBERTA,
+                minuto,
+                narrativa.texto_de_descoberta(
+                    len(eventos), especie=especie.nome, local=contexto.destino.nome
+                ),
+                {
+                    "especie_id": especie.id,
+                    "especie_nome": especie.nome,
+                    "local_id": contexto.destino.local.id,
+                },
+            )
+
+        dificuldade = dificuldade_do_encontro(nivel_selvagem, contexto.nivel_dificuldade)
+        poder = poder_do_time([membro.no_time for membro in membros], contexto.treinador.nivel)
+        chance = chance_estimada(poder, dificuldade)
+        lider = _lider(membros)
+
+        # Rolagem 4: venceu ou perdeu.
+        venceu = gerador.random() < chance
+
+        if venceu:
+            vitorias += 1
+            exp_da_batalha = experiencia_de_batalha(especie.experiencia_base, nivel_selvagem)
+            exp_por_pokemon = exp_da_batalha // len(membros)
+            experiencia_treinador += experiencia_ganha_por_batalha(exp_da_batalha)
+
+            # Rolagem 5: o desgaste da vitoria, igual para todo o time.
+            desgaste = gerador.randint(*balance.DESGASTE_VITORIA)
+            membros = _desgastar(membros, desgaste)
+
+            _anotar(
+                eventos,
+                TipoDeEvento.BATALHA,
+                minuto,
+                narrativa.texto_de_batalha(
+                    len(eventos), lider=lider, especie=especie.nome, nivel=nivel_selvagem
+                ),
+                {
+                    "especie_id": especie.id,
+                    "especie_nome": especie.nome,
+                    "nivel_selvagem": nivel_selvagem,
+                    "venceu": True,
+                    "chance": chance,
+                    "poder_time": poder,
+                    "dificuldade": dificuldade,
+                    "exp_da_batalha": exp_da_batalha,
+                    "exp_por_pokemon": exp_por_pokemon,
+                    "desgaste": desgaste,
+                },
+            )
+
+            membros = tuple(
+                _ganhar_experiencia(
+                    membro,
+                    exp_por_pokemon,
+                    contexto.catalogo,
+                    catalogo_de_evolucao,
+                    eventos,
+                    minuto,
+                )
+                for membro in membros
+            )
+
+            # Rolagens 6 e 7: houve achado e, havendo, qual item.
+            achado = achado_apos_vitoria(contexto.nivel_dificuldade, gerador)
+            if achado is not None:
+                encontrados[achado.item_id] = encontrados.get(achado.item_id, 0) + achado.quantidade
+                _anotar(
+                    eventos,
+                    TipoDeEvento.ITEM,
+                    minuto,
+                    narrativa.texto_de_item(
+                        len(eventos),
+                        item=_nome_do_item(contexto, achado.item_id),
+                        quantidade=achado.quantidade,
+                        local=contexto.destino.nome,
+                    ),
+                    {
+                        "item_id": achado.item_id,
+                        "item_nome": _nome_do_item(contexto, achado.item_id),
+                        "quantidade": achado.quantidade,
+                    },
+                )
+
+            # Rolagem 8: a tentativa de captura, se restar bola e espaco.
+            #
+            # Os dois limites da regra 10 sao checados SEPARADAMENTE, e e de
+            # proposito. A municao esta na carga, que ja encolhe a cada
+            # arremesso — `escolher_pokebola` devolve None quando acabou. A
+            # vaga esta nas capturas feitas contra a capacidade da bagagem,
+            # que nao muda durante a expedicao. Medir os dois com uma conta so
+            # (`min(bolas, capacidade) > len(capturas)`) desconta a bola gasta
+            # duas vezes — uma dentro do minimo e outra na comparacao — e faz
+            # a ultima bola nunca ser arremessada.
+            bola = escolher_pokebola(carga)
+            ha_espaco = len(capturas) < capacidade_bagagem(len(membros))
+            if bola is not None and ha_espaco:
+                chance_captura = probabilidade_de_captura(
+                    especie.taxa_captura,
+                    bola.potencia,
+                    nivel_medio_do_time([membro.nivel for membro in membros]),
+                    nivel_selvagem,
+                )
+                capturou = gerador.random() < chance_captura
+                carga = consumir(carga, bola.item_id)
+                consumidos[bola.item_id] = consumidos.get(bola.item_id, 0) + 1
+                payload_da_captura = {
+                    "especie_id": especie.id,
+                    "especie_nome": especie.nome,
+                    "nivel": nivel_selvagem,
+                    "bola_id": bola.item_id,
+                    "bola_nome": bola.nome,
+                    "chance": chance_captura,
+                }
+                if capturou:
+                    capturas.append(
+                        CapturaEmCampo(
+                            especie_id=especie.id,
+                            especie_nome=especie.nome,
+                            nivel=nivel_selvagem,
+                            experiencia=experiencia_total_para_nivel(
+                                especie.curva_crescimento, nivel_selvagem
+                            ),
+                            hp_atual_pct=balance.BASE_PERCENTUAL,
+                            ordem_do_encontro=indice,
+                        )
+                    )
+                    _anotar(
+                        eventos,
+                        TipoDeEvento.CAPTURA,
+                        minuto,
+                        narrativa.texto_de_captura(
+                            len(eventos),
+                            especie=especie.nome,
+                            nivel=nivel_selvagem,
+                            bola=bola.nome,
+                        ),
+                        payload_da_captura,
+                    )
+                else:
+                    _anotar(
+                        eventos,
+                        TipoDeEvento.CAPTURA_FALHA,
+                        minuto,
+                        narrativa.texto_de_captura_falha(
+                            len(eventos),
+                            especie=especie.nome,
+                            nivel=nivel_selvagem,
+                            bola=bola.nome,
+                        ),
+                        payload_da_captura,
+                    )
+            continue
+
+        derrotas += 1
+        derrotas_sem_cura += 1
+
+        # Rolagem 5-alternativa: a derrota desgasta mais.
+        desgaste = gerador.randint(*balance.DESGASTE_DERROTA)
+        membros = _desgastar(membros, desgaste)
+
+        # A cura vem DEPOIS do desgaste, que e quando ha o que curar, e nao
+        # consome rolagem nenhuma: `escolher_cura` e deterministica de
+        # proposito, para nao deslocar os sorteios seguintes.
+        remedio = escolher_cura(carga, [membro.no_time for membro in membros])
+        if remedio is not None:
+            carga = consumir(carga, remedio.item_id)
+            consumidos[remedio.item_id] = consumidos.get(remedio.item_id, 0) + 1
+            curados = aplicar_cura(remedio, [membro.no_time for membro in membros])
+            membros = tuple(
+                replace(membro, hp_atual_pct=curado.hp_atual_pct)
+                for membro, curado in zip(membros, curados, strict=True)
+            )
+            # Regra 9 da spec 007: a falha e por tres derrotas SEM o que curar.
+            derrotas_sem_cura = 0
+
+        _anotar(
+            eventos,
+            TipoDeEvento.CONTRATEMPO,
+            minuto,
+            narrativa.texto_de_contratempo(
+                len(eventos),
+                lider=lider,
+                especie=especie.nome,
+                nivel=nivel_selvagem,
+                desgaste=desgaste,
+                item_usado=None if remedio is None else remedio.nome,
+            ),
+            {
+                "especie_id": especie.id,
+                "especie_nome": especie.nome,
+                "nivel_selvagem": nivel_selvagem,
+                "venceu": False,
+                "chance": chance,
+                "poder_time": poder,
+                "dificuldade": dificuldade,
+                "desgaste": desgaste,
+                "item_usado": None if remedio is None else remedio.item_id,
+                "item_usado_nome": None if remedio is None else remedio.nome,
+                "derrotas_sem_cura": derrotas_sem_cura,
+            },
+        )
+
+        if derrotas_sem_cura >= balance.DERROTAS_PARA_FALHAR:
+            status = StatusExpedicao.CONCLUIDA_FALHA
+            break
+
+    sucesso = status is StatusExpedicao.CONCLUIDA_SUCESSO
+    # Numa falha o treinador volta mais cedo: o retorno acontece no minuto do
+    # encontro que encerrou a expedicao, e nao no fim da duracao contratada.
+    minuto_do_retorno = contexto.duracao_minutos if sucesso else minuto
+    encontros_havidos = vitorias + derrotas
+
+    # Regra 16 e criterio 15 da spec 007: expedicao falha nao traz captura
+    # nenhuma. Os eventos `CAPTURA` continuam na linha do tempo porque a
+    # captura ACONTECEU em campo — o que nao aconteceu foi a chegada ao
+    # laboratorio —, e o texto do retorno diz isso com todas as letras para
+    # que o resumo vazio nao pareca defeito. As Pokebolas gastas nessas
+    # tentativas continuam gastas: elas foram arremessadas.
+    capturas_mantidas = tuple(capturas) if sucesso else ()
+    capturas_perdidas = 0 if sucesso else len(capturas)
+
+    _anotar(
+        eventos,
+        TipoDeEvento.RETORNO,
+        minuto_do_retorno,
+        narrativa.texto_de_retorno(
+            len(eventos),
+            treinador=contexto.treinador.nome,
+            sucesso=sucesso,
+            encontros=encontros_havidos,
+            vitorias=vitorias,
+            derrotas_sem_cura=derrotas_sem_cura,
+            capturas_perdidas=capturas_perdidas,
+        ),
+        {
+            "status": status.value,
+            "encontros": encontros_havidos,
+            "vitorias": vitorias,
+            "derrotas": derrotas,
+            "derrotas_sem_cura": derrotas_sem_cura,
+            "capturas": len(capturas_mantidas),
+            "capturas_perdidas": capturas_perdidas,
+        },
+    )
+
+    return RelatorioDeCampo(
+        status=status,
+        eventos=tuple(eventos),
+        time=tuple(membro.no_relatorio() for membro in membros),
+        capturas=capturas_mantidas,
+        itens_consumidos=_somados(consumidos, contexto),
+        itens_encontrados=_somados(encontrados, contexto),
+        avistamentos=tuple(
+            AvistamentoEmCampo(
+                especie_id=especie_id,
+                especie_nome=contexto.catalogo[especie_id].nome,
+                vezes=vezes,
+                primeira_vez=especie_id in descobertas,
+            )
+            for especie_id, vezes in sorted(vezes_vista.items())
+        ),
+        experiencia_treinador=experiencia_treinador,
+        experiencia_laboratorio=(
+            experiencia_de_laboratorio(contexto.nivel_dificuldade) if sucesso else 0
+        ),
+        encontros=encontros_havidos,
+        vitorias=vitorias,
+        derrotas=derrotas,
+        duracao_efetiva_minutos=minuto_do_retorno,
+    )

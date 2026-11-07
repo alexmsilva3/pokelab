@@ -81,10 +81,20 @@ class PokemonResumo(BaseModel):
     nivel: int
     atribuido: bool
     treinador_id: uuid.UUID | None
+    # Derivado pelo servico a cada leitura (spec 007, criterios 20 e 21): o
+    # valor CRU do banco nunca atravessa a API. `hp_atualizado_em` acompanha
+    # para a interface poder explicar a recuperacao ("desde quando").
+    hp_atual_pct: int
+    hp_atualizado_em: datetime
 
     @classmethod
-    def de_modelo(cls, pokemon: object) -> PokemonResumo:
-        """`pokemon` precisa chegar com `especie` ja carregada (sem lazy load)."""
+    def de_modelo(cls, pokemon: object, *, hp_atual_pct: int) -> PokemonResumo:
+        """`pokemon` precisa chegar com `especie` ja carregada (sem lazy load).
+
+        `hp_atual_pct` chega PRONTO, ja derivado pelo servico com
+        `services.relogio.hp_observado` (Artigo I: ler o relogio e a escala
+        de tempo e trabalho do servico, nao deste schema).
+        """
         especie = pokemon.especie
         return cls(
             id=pokemon.id,
@@ -99,6 +109,8 @@ class PokemonResumo(BaseModel):
             nivel=pokemon.nivel,
             atribuido=pokemon.treinador_id is not None,
             treinador_id=pokemon.treinador_id,
+            hp_atual_pct=hp_atual_pct,
+            hp_atualizado_em=pokemon.hp_atualizado_em,
         )
 
 

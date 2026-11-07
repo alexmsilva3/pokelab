@@ -32,6 +32,7 @@ from app.core.erros import ConflitoDeExpedicao
 from app.game import balance
 from app.main import app
 from app.models import Expedicao, ItemEstoque
+from app.repositories.expedicoes import LIMITE_MAXIMO, LIMITE_PADRAO
 from app.schemas.expedicoes import ItemDaCargaEntrada
 from app.services import expedicoes as expedicoes_service
 from tests.conftest import requer_banco
@@ -183,6 +184,40 @@ def test_despachar_cria_expedicao_com_previsao_de_retorno_e_ocupa_o_treinador(se
     assert corpo["eta"] > corpo["started_at"]
     assert corpo["segundos_restantes"] > 0
     assert _ficha_treinador(sessao, treinador_id)["status"] == "EM_EXPEDICAO"
+
+
+# --- Alem dos catorze: semente grande chega como string sem perder digito -----
+
+
+def test_seed_acima_do_inteiro_seguro_do_js_chega_como_string_sem_perder_digito(
+    sessao_db, monkeypatch
+):
+    """`ExpedicaoResumoLer.seed` e serializado como STRING (revisao da Fase 7,
+    achado 2): o Artigo III promete reproducao exata, mas um `number` de JSON
+    perde digitos acima de 2**53-1 -- o maior inteiro que o `number` de 64
+    bits do JavaScript representa sem arredondar. Uma semente PEQUENA nao
+    provaria nada aqui: um `int` cru no corpo tambem bateria digito a digito
+    abaixo desse teto, e foi assim que a troca de tipo ficou sem regressao da
+    primeira vez. `balance.SEED_MAXIMO` e o proprio teto do sorteio
+    (`random.randrange` em `despachar()`), nunca um literal calibrado a mao."""
+    semente_grande = balance.SEED_MAXIMO - 1
+    assert semente_grande > 2**53 - 1  # premissa do teste
+
+    monkeypatch.setattr(expedicoes_service.random, "randrange", lambda *_args: semente_grande)
+
+    sessao = _registrar("SeedGrandeComoString")
+    treinador_id = _treinador_pronto(sessao)
+
+    resposta = _despachar(sessao, treinador_id)
+    assert resposta.status_code == 201
+
+    corpo_cru = resposta.json()
+    assert isinstance(corpo_cru["seed"], str)
+    assert corpo_cru["seed"] == str(semente_grande)
+    assert int(corpo_cru["seed"]) == semente_grande
+
+    detalhe_cru = _obter(sessao, corpo_cru["id"]).json()
+    assert detalhe_cru["seed"] == str(semente_grande)
 
 
 # --- Criterio 2 ----------------------------------------------------------------
@@ -782,3 +817,58 @@ def test_listar_expedicoes_emite_numero_constante_de_consultas(sessao_db):
     assert len(resposta_uma.json()["items"]) == 1
     assert len(resposta_tres.json()["items"]) == balance.TREINADORES_NO_KIT_INICIAL
     assert contagem_tres["total"] == contagem_uma["total"]
+
+
+# --- Alem dos catorze: `limite` de GET /expeditions (revisao de mutacao) -------
+
+
+def test_limite_de_get_expeditions_corta_a_consulta_antes_do_filtro_por_estado(sessao_db):
+    """`GET /expeditions` promete "as N mais recentes", nunca "as N mais
+    recentes depois de filtrar" (docstring de `repositories.expedicoes.listar`).
+    Apagar o `.limit(limite)` da consulta passa a suite inteira em verde --
+    nenhum teste ate aqui monta mais historico que `LIMITE_PADRAO`. Cobre o
+    padrao, o corte quando se pede menos, o 422 acima do teto (`LIMITE_MAXIMO`,
+    nunca um literal), e a regra que surpreende: o corte acontece ANTES do
+    filtro por `status`, entao um `limite` pequeno pode fazer uma expedicao
+    ABORTADA que existe de verdade no historico nunca aparecer para esse
+    filtro, porque a janela cortada nem chega a conte-la."""
+    sessao = _registrar("LimiteDeExpedicoes")
+    treinador_id = _treinador_pronto(sessao)
+
+    # Historico maior que o padrao, so de expedicoes ABORTADAS.
+    total_abortadas = LIMITE_PADRAO + 3
+    for _ in range(total_abortadas):
+        despacho = _despachar(sessao, treinador_id)
+        assert despacho.status_code == 201
+        assert _abortar(sessao, despacho.json()["id"]).status_code == 200
+
+    # A ultima expedicao do laboratorio fica ATIVA (nao abortada): e a unica
+    # linha de todo o historico que nao e ABORTADA.
+    ativa = _despachar(sessao, treinador_id)
+    assert ativa.status_code == 201
+    assert ativa.json()["estado_observado"] == "EM_CURSO"
+
+    resposta_padrao = client.get("/expeditions", headers=_cabecalho(sessao))
+    assert resposta_padrao.status_code == 200
+    assert len(resposta_padrao.json()["items"]) == LIMITE_PADRAO
+
+    resposta_cinco = client.get("/expeditions", params={"limite": 5}, headers=_cabecalho(sessao))
+    assert resposta_cinco.status_code == 200
+    assert len(resposta_cinco.json()["items"]) == 5
+
+    resposta_acima_do_teto = client.get(
+        "/expeditions", params={"limite": LIMITE_MAXIMO + 1}, headers=_cabecalho(sessao)
+    )
+    assert resposta_acima_do_teto.status_code == 422
+
+    # O corte acontece ANTES do filtro: pedindo so a mais recente (que e a
+    # ATIVA) e filtrando por ABORTADA, a janela ja cortada nao tem mais
+    # nenhuma ABORTADA para o filtro encontrar -- mesmo havendo
+    # `total_abortadas` delas no historico completo do laboratorio.
+    resposta_corte_antes_do_filtro = client.get(
+        "/expeditions",
+        params={"limite": 1, "status": "ABORTADA"},
+        headers=_cabecalho(sessao),
+    )
+    assert resposta_corte_antes_do_filtro.status_code == 200
+    assert resposta_corte_antes_do_filtro.json()["items"] == []

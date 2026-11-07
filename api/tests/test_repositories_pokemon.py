@@ -63,6 +63,7 @@ def _inserir_pokemon(
         nivel=nivel,
         experiencia=0,
         hp_atual_pct=100,
+        hp_atualizado_em=datetime.now(UTC),
         treinador_id=treinador_id,
         origem="CAPTURADO",
         local_captura_id=None,

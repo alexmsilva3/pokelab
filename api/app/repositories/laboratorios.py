@@ -48,12 +48,60 @@ def travar_para_concessao(sessao: Session, laboratorio_id: uuid.UUID) -> Laborat
     `starters_concedidos = False` as duas e as duas seguem em frente. A unique
     de `professor_id` protege o caminho do registro, mas nao protege uma
     segunda chamada a concessao sobre um laboratorio que ja existe.
+
+    `populate_existing=True` pela mesma razao de `travar` abaixo: o unico
+    chamador (`auth_service._conceder_kit`) recebe o laboratorio logo depois
+    de `laboratorios_repo.criar` adiciona-lo a sessao, entao ele ja esta no
+    identity map quando este `SELECT ... FOR UPDATE` roda. Hoje isso e
+    inofensivo — a linha acabou de nascer nesta mesma transacao, com um id novo
+    que nenhuma outra transacao pode ter visto antes do commit, entao nao ha
+    escritor concorrente cujo resultado este SELECT precise enxergar — mas
+    seria um bug silencioso esperando um segundo chamador que travar sobre um
+    laboratorio JA EXISTENTE. `populate_existing` custa nada e evita essa
+    armadilha para sempre.
     """
     return sessao.scalar(
-        select(Laboratorio).where(Laboratorio.id == laboratorio_id).with_for_update()
+        select(Laboratorio)
+        .where(Laboratorio.id == laboratorio_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
 
 
 def marcar_starters_concedidos(sessao: Session, laboratorio: Laboratorio) -> None:
     """Invariante 10 do SDD 3.3: os starters sao concedidos exatamente uma vez."""
     laboratorio.starters_concedidos = True
+
+
+def travar(sessao: Session, laboratorio_id: uuid.UUID) -> Laboratorio | None:
+    """Trava a linha do laboratorio ate o fim da transacao (Artigo VII).
+
+    A resolucao de expedicao credita experiencia de laboratorio (spec 007,
+    regra 14); sem o lock, duas expedicoes do mesmo laboratorio resolvendo ao
+    mesmo tempo poderiam ler a mesma `experiencia` de partida e uma das duas
+    ganancias se perderia.
+
+    `populate_existing=True` nao e cosmetico aqui, e a correcao do bug: TODA
+    rota autenticada passa por `professor_atual` (`core/dependencias.py`), que
+    ja carregou este MESMO `Laboratorio` na sessao da requisicao antes de
+    qualquer lock ser pedido. Sem `populate_existing`, o SQLAlchemy encontra o
+    objeto no identity map, devolve ele tal como estava, e NAO sobrescreve os
+    atributos com o que acabou de vir do `SELECT ... FOR UPDATE` — a trava na
+    linha e real, mas os valores que o chamador enxerga sao os de antes dela.
+    Com tres `claim`s concorrentes do mesmo laboratorio, os tres liam
+    `experiencia` e `nivel` de partida iguais e so a ultima escrita vencia: as
+    outras duas experiencias eram jogadas fora em silencio. Reproduzido com
+    `threading.Barrier(3)` contra o compose antes desta correcao.
+    """
+    return sessao.scalar(
+        select(Laboratorio)
+        .where(Laboratorio.id == laboratorio_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
+def atualizar_progressao(laboratorio: Laboratorio, *, nivel: int, experiencia: int) -> None:
+    """Grava o nivel e a experiencia que `game.laboratorio` ja calculou."""
+    laboratorio.nivel = nivel
+    laboratorio.experiencia = experiencia

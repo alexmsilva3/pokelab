@@ -34,6 +34,7 @@ def persistir(
                 nivel=pokemon.nivel,
                 experiencia=pokemon.experiencia,
                 hp_atual_pct=HP_INICIAL_PCT,
+                hp_atualizado_em=agora,
                 treinador_id=None,
                 origem=ORIGEM_INICIAL,
                 local_captura_id=None,

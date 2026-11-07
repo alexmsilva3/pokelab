@@ -330,6 +330,17 @@ def test_toda_pokebola_do_balance_existe_no_seed(itens):
     assert set(MULTIPLICADOR_BOLA) <= ids
 
 
+def test_a_potencia_da_pokebola_no_seed_bate_com_o_balance(itens):
+    # A resolucao da expedicao usa `Item.potencia` do seed como multiplicador
+    # de captura, e nao o dicionario de balance.py. Este teste e o que impede
+    # as duas fontes de divergirem: um ingestor que mudasse a potencia de uma
+    # Pokebola moveria a economia do jogo sem ninguem decidir isso.
+    from app.game.balance import MULTIPLICADOR_BOLA
+
+    potencias = {item["id"]: item["potencia"] for item in itens}
+    assert {item_id: potencias[item_id] for item_id in MULTIPLICADOR_BOLA} == MULTIPLICADOR_BOLA
+
+
 def test_todo_item_do_estoque_inicial_existe_no_seed(itens):
     from app.game.balance import ESTOQUE_INICIAL
 

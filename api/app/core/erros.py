@@ -138,6 +138,34 @@ class ConflitoDeExpedicao(ErroDeAplicacao):
         super().__init__(str(erro), detalhes=erro.detalhes)
 
 
+class ExpedicaoEmCurso(ErroDeAplicacao):
+    """O prazo da expedicao ainda nao venceu (criterio 2 da spec 007).
+
+    `POST /expeditions/{id}/claim` so resolve depois que o `eta` passou; pedir
+    o relatorio antes disso e recusado com o motivo, e nao com um relatorio
+    vazio.
+    """
+
+    status_code: ClassVar[int] = 409
+    codigo: ClassVar[str] = "EXPEDICAO_EM_CURSO"
+    mensagem_padrao: ClassVar[str] = (
+        "O prazo desta expedicao ainda nao venceu; o relatorio so existe depois que ela volta."
+    )
+
+
+class ExpedicaoAbortada(ErroDeAplicacao):
+    """A expedicao foi abortada e nunca produziu relatorio (spec 007).
+
+    Diferente de uma expedicao concluida (sucesso ou falha), o aborto nao
+    passa pela resolucao: nao ha linha do tempo, nao ha capturas, nao ha o que
+    reler.
+    """
+
+    status_code: ClassVar[int] = 409
+    codigo: ClassVar[str] = "EXPEDICAO_ABORTADA"
+    mensagem_padrao: ClassVar[str] = "Esta expedicao foi abortada e nao tem relatorio de campo."
+
+
 class ExpedicaoNaoEstaEmCurso(ErroDeAplicacao):
     """A expedicao nao esta `EM_CURSO` no momento do aborto (criterio 12 da spec 006).
 

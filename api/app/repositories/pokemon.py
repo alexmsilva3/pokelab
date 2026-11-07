@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from app.models import PokemonEspecie, PokemonInstancia
+
+ORIGEM_CAPTURADO = "CAPTURADO"
 
 PAGE_SIZE_PADRAO = 20
 # Teto de protecao, nao regra de negocio: pedido acima disso e cortado em
@@ -115,7 +118,13 @@ def listar(
     itens = list(
         sessao.scalars(
             _query_juntada(laboratorio_id, filtros)
-            .options(contains_eager(PokemonInstancia.especie))
+            .options(
+                contains_eager(PokemonInstancia.especie),
+                # O servico precisa do STATUS do treinador para derivar o HP
+                # (invariante 18: em campo a enfermaria nao conta) sem uma
+                # consulta por linha — ver `services.pokemon._hp_observado`.
+                joinedload(PokemonInstancia.treinador),
+            )
             .order_by(PokemonInstancia.nivel.desc(), PokemonInstancia.id)
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -149,3 +158,61 @@ def buscar_detalhe(
 
 def atualizar_apelido(pokemon: PokemonInstancia, apelido: str | None) -> None:
     pokemon.apelido = apelido
+
+
+def atualizar_apos_expedicao(
+    pokemon: PokemonInstancia,
+    *,
+    nivel: int,
+    experiencia: int,
+    especie_id: int,
+    hp_atual_pct: int,
+    hp_atualizado_em: datetime,
+) -> None:
+    """Grava o antes-e-depois que `game.expedition.resolver` ja decidiu (spec 007).
+
+    `especie_id` muda quando o Pokemon evoluiu (`PokemonAposExpedicao.especie_final_id`
+    ja resolve os dois casos); `hp_atualizado_em` recebe `resolvida_em`, que e
+    quando a enfermaria volta a contar para este Pokemon (invariante 18).
+    """
+    pokemon.nivel = nivel
+    pokemon.experiencia = experiencia
+    pokemon.especie_id = especie_id
+    pokemon.hp_atual_pct = hp_atual_pct
+    pokemon.hp_atualizado_em = hp_atualizado_em
+
+
+def criar_capturado(
+    sessao: Session,
+    *,
+    id: uuid.UUID,
+    laboratorio_id: uuid.UUID,
+    especie_id: int,
+    nivel: int,
+    experiencia: int,
+    hp_atual_pct: int,
+    local_captura_id: str,
+    capturado_em: datetime,
+) -> PokemonInstancia:
+    """Grava uma captura de campo: solta no laboratorio, nunca no time (regra 19).
+
+    `id` chega pronto de quem chama, e nao e gerado aqui: o servico precisa do
+    mesmo UUID tanto para a linha nova quanto para `relatorio_resumo.capturas`,
+    gravado na mesma transacao — gerar em dois lugares produziria dois ids
+    para o mesmo Pokemon.
+    """
+    pokemon = PokemonInstancia(
+        id=id,
+        laboratorio_id=laboratorio_id,
+        especie_id=especie_id,
+        nivel=nivel,
+        experiencia=experiencia,
+        hp_atual_pct=hp_atual_pct,
+        hp_atualizado_em=capturado_em,
+        treinador_id=None,
+        origem=ORIGEM_CAPTURADO,
+        local_captura_id=local_captura_id,
+        capturado_em=capturado_em,
+    )
+    sessao.add(pokemon)
+    return pokemon

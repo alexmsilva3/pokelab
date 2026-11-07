@@ -7,12 +7,12 @@
 | 3 | `game/capture.py`: `p_captura` e slots de bagagem (SDD 4.6) | pokelab-domain | critérios 6, 7, 8 |
 | 4 | `game/encounter.py`: sorteio ponderado de espécie e nível, interface do resolvedor (ADR-003) | pokelab-domain | critério 3 |
 | 5 | `game/cura.py`: escolha e efeito do item de cura, reinício da contagem de derrotas | pokelab-domain | critérios 15, 16 |
-| 6 | `game/achados.py`: tabela ponderada de itens e quantidade por dificuldade (SDD 7.12) | pokelab-domain | evento `ITEM` no relatório |
+| 6 | `game/achados.py`: tabela ponderada de itens e quantidade por dificuldade (SDD 7.6) | pokelab-domain | evento `ITEM` no relatório |
 | 7 | `game/expedition.py::resolver`: laço de encontros na ordem fixada, eventos ordenados, status final | pokelab-domain | critérios 1, 3, 15 |
 | 8 | Textos narrativos em português por tipo de evento, com interpolação | pokelab-domain | revisão de texto |
 | 9 | `game/stats.py::hp_recuperado`: recuperação passiva derivada do relógio | pokelab-domain | critérios 20, 21 |
 | 10 | Constantes novas em `balance.py` com nome, unidade e motivo | pokelab-domain | Artigo IV |
-| 11 | Coluna `hp_atualizado_em` e migração com `downgrade` | pokelab-api | `make migrate` ida e volta |
+| 11 | Colunas `pokemon_instancias.hp_atualizado_em` e `expedicoes.relatorio_resumo`, numa migração com `downgrade` | pokelab-api | `make migrate` ida e volta |
 | 12 | Materialização do HP recuperado no despacho | pokelab-api | critério 21 |
 | 13 | `POST /expeditions/{id}/claim` com lock, checagem de status e escrita completa | pokelab-api | critérios 1, 2, 4, 5, 22 |
 | 14 | Escrita do resultado: capturas, HP do time, Pokédex, avistamentos, desbloqueio, estoque, treinador livre | pokelab-api | critérios 6, 7, 13, 17, 18 |
@@ -26,3 +26,4 @@
 | 22 | Testes de bagagem cheia, sem bola e de falha por três derrotas | pokelab-test | critérios 7, 8, 15, 16 |
 | 23 | Testes de Pokédex, avistamento e desbloqueio | pokelab-test | critérios 13, 17, 18 |
 | 24 | Testes de frontend do relatório | pokelab-test | critério 19 |
+| 25 | Coluna `expedicoes.especies_vistas_no_envio` (segunda migração), gravada no despacho e lida no `claim` no lugar da Pokédex viva — veio da revisão da fase | pokelab-api | critério 23 |

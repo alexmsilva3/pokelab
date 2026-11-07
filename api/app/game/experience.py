@@ -21,11 +21,16 @@ constantes de hoje, mas a Fase 8 vai mexer nesses multiplicadores, e um
 arredondamento que muda conforme a calibragem transformaria o Artigo III em
 promessa. Com a tabela pronta, o nivel e o inverso da experiencia viram uma
 busca binaria, e os dois sentidos sao consistentes por construcao.
+
+A Fase 7 acrescenta o outro lado da curva: `aplicar_experiencia`, que soma o
+ganho de uma batalha e devolve o nivel resultante com o teto duro do nivel 100
+(invariante 7 do SDD 3.3).
 """
 
 from __future__ import annotations
 
 from bisect import bisect_right
+from dataclasses import dataclass
 from enum import StrEnum
 from fractions import Fraction
 from math import floor
@@ -129,3 +134,102 @@ def experiencia_para_o_proximo_nivel(curva: str | CurvaCrescimento, experiencia:
     if nivel >= balance.NIVEL_MAXIMO:
         return 0
     return experiencia_total_para_nivel(curva, nivel + 1) - experiencia
+
+
+# --- Aplicacao do ganho (SDD 4.1, criterios 9, 10 e 12 da spec 007) ---------
+
+
+@dataclass(frozen=True, slots=True)
+class ResultadoDeGanho:
+    """O que a experiencia de uma expedicao fez com um Pokemon.
+
+    Traz o antes e o depois dos dois campos que a resolucao grava, e nao so o
+    depois: o relatorio de campo precisa dizer "subiu do 15 ao 17", e deixar o
+    servico guardar o valor anterior por conta propria so criaria um segundo
+    lugar onde ele pode ser esquecido.
+    """
+
+    nivel_antes: int
+    nivel_depois: int
+    experiencia_antes: int
+    experiencia_depois: int
+
+    @property
+    def niveis_ganhos(self) -> int:
+        """Quantos niveis a aplicacao subiu. Zero quando nada mudou."""
+        return self.nivel_depois - self.nivel_antes
+
+    @property
+    def subiu(self) -> bool:
+        """Se cabe um evento SUBIU_NIVEL no relatorio."""
+        return self.niveis_ganhos > 0
+
+    @property
+    def experiencia_aplicada(self) -> int:
+        """O ganho que de fato entrou, ja descontado o excedente do nivel 100."""
+        return self.experiencia_depois - self.experiencia_antes
+
+
+def experiencia_maxima(curva: str | CurvaCrescimento) -> int:
+    """Experiencia acumulada de um Pokemon no nivel maximo.
+
+    E o teto duro do invariante 7: acima disto nao ha nivel para comprar, e a
+    experiencia excedente nao e guardada para uso futuro.
+    """
+    return experiencia_total_para_nivel(curva, balance.NIVEL_MAXIMO)
+
+
+def aplicar_experiencia(
+    curva: str | CurvaCrescimento,
+    nivel: int,
+    experiencia: int,
+    ganho: int,
+) -> ResultadoDeGanho:
+    """Soma o ganho de uma batalha e devolve o nivel resultante.
+
+    Tres decisoes valem o comentario.
+
+    **O teto do nivel 100 e duro e nao acumula** (criterio 12 da spec 007). Um
+    Pokemon no nivel 100 que vence mais dez batalhas termina com exatamente a
+    experiencia necessaria para o nivel 100, nunca com mais. Guardar o
+    excedente seria preparar uma surpresa para o dia em que o teto subisse: um
+    time inteiro saltaria varios niveis de uma vez sem ter lutado nada depois
+    da mudanca.
+
+    **Varios niveis de uma vez sao normais.** Uma expedicao longa contra
+    selvagens de nivel alto sobe tres niveis de um Pokemon fraco, e o relatorio
+    emite um evento por aplicacao, com `niveis_ganhos` dizendo quantos foram.
+    O nivel nao e incrementado de um em um: ele e lido da tabela da curva, que
+    ja e o inverso exato da experiencia.
+
+    **O nivel informado e conferido contra a curva.** Nivel e experiencia sao
+    duas colunas da mesma linha, e so uma delas pode estar certa quando
+    divergem. Divergencia e dado corrompido, nao jogada possivel, e ela e
+    recusada aqui para que o relatorio nunca registre um "subiu de nivel" que
+    e so a correcao silenciosa de uma inconsistencia do banco.
+    """
+    if ganho < 0:
+        raise ExperienciaInvalida(f"O ganho de experiencia nao pode ser negativo: {ganho}.")
+    if experiencia < 0:
+        raise ExperienciaInvalida(f"Experiencia acumulada nao pode ser negativa: {experiencia}.")
+    if nivel < NIVEL_MINIMO or nivel > balance.NIVEL_MAXIMO:
+        raise NivelInvalido(
+            f"Nivel {nivel} fora da faixa valida de {NIVEL_MINIMO} a {balance.NIVEL_MAXIMO}."
+        )
+
+    teto = experiencia_maxima(curva)
+    experiencia_antes = min(experiencia, teto)
+    nivel_pela_curva = nivel_para_experiencia(curva, experiencia_antes)
+    if nivel_pela_curva != nivel:
+        raise ExperienciaInvalida(
+            f"O nivel gravado ({nivel}) nao corresponde a experiencia gravada "
+            f"({experiencia}), que na curva {curva} vale o nivel {nivel_pela_curva}."
+        )
+
+    experiencia_depois = min(experiencia_antes + ganho, teto)
+    return ResultadoDeGanho(
+        nivel_antes=nivel,
+        nivel_depois=nivel_para_experiencia(curva, experiencia_depois),
+        experiencia_antes=experiencia_antes,
+        experiencia_depois=experiencia_depois,
+    )

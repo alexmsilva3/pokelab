@@ -56,6 +56,17 @@ CURVA_MEDIA_LENTA_B: Final[float] = 15.0
 CURVA_MEDIA_LENTA_C: Final[float] = 100.0
 CURVA_MEDIA_LENTA_D: Final[float] = 140.0
 
+# --- Evolucao (SDD 4.1) ----------------------------------------------------
+
+# Teto de evolucoes encadeadas que uma unica aplicacao de experiencia pode
+# disparar, em etapas. Nao e regra de jogo: e guarda contra dado circular no
+# seed, onde `evolui_para_id` apontasse de volta para um elo anterior e o laco
+# girasse para sempre dentro de uma requisicao. A maior linha evolutiva de
+# Kanto tem duas etapas (Bulbasaur -> Ivysaur -> Venusaur, e um salto do nivel
+# 15 ao 33 numa expedicao longa dispara as duas), e a terceira e folga para um
+# seed futuro. Atingir o teto significa seed invalido, e o dominio levanta.
+EVOLUCOES_MAXIMAS_POR_EXPEDICAO: Final[int] = 3
+
 # --- Avatar de treinador (questao 16) --------------------------------------
 
 # O avatar nao e arquivo: e iniciais mais uma cor, derivadas da semente. O
@@ -141,20 +152,100 @@ DESGASTE_VITORIA: Final[tuple[int, int]] = (3, 8)  # pontos de hp_atual_pct
 DESGASTE_DERROTA: Final[tuple[int, int]] = (15, 30)
 DERROTAS_PARA_FALHAR: Final[int] = 3
 
+# --- Recuperacao passiva (SDD 4.8) -----------------------------------------
+
+# Minutos de jogo que valem um ponto de hp_atual_pct enquanto o Pokemon esta
+# no laboratorio. A conta que fixa o numero:
+#
+#   uma expedicao tira de 15 a 40 pontos (3 a 8 por vitoria, 15 a 30 por
+#   derrota). Com 2 minutos por ponto, esse estrago volta em 30 a 80 minutos,
+#   que e da mesma ordem de grandeza de uma expedicao (Pallet leva 15 min,
+#   Mt. Moon partindo de Pallet leva 55). O professor sente a espera e tem
+#   motivo para girar os tres treinadores, sem que o jogo trave.
+#
+#   do zero ao cheio: 100 pontos * 2 = 200 minutos, 3h20 de tempo real.
+#   Com EXPEDITION_TIME_SCALE = 0.01 em desenvolvimento, o servico alimenta
+#   esta funcao com 100x os minutos de relogio, e os mesmos 200 minutos de
+#   jogo passam em 2 minutos reais.
+#
+# A conversao de relogio para minutos de jogo e do servico: a escala de tempo
+# e ambiente, nao calibragem, e o Artigo I proibe le-la aqui dentro.
+MINUTOS_POR_PONTO_DE_HP: Final[int] = 2
+
 # --- Captura (SDD 4.5) -----------------------------------------------------
 
 TAXA_CAPTURA_MAXIMA: Final[int] = 255
-NIVEIS_POR_SLOT_CAPTURA: Final[int] = 5  # slots = 1 + nivel_treinador // 5
+# NIVEIS_POR_SLOT_CAPTURA saiu daqui na Fase 7. Ela vinha de uma regra antiga
+# ("slots = 1 + nivel_treinador // 5") que o SDD 4.6 substituiu por
+# `min(pokebolas_na_carga, CAPACIDADE_TOTAL_TREINADOR - tamanho_do_time)`.
+# Nenhum modulo a lia, e constante orfa em balance.py e armadilha de
+# calibragem: a Fase 9 mexeria num numero que nao alimenta formula nenhuma.
 BONUS_CAPTURA_POR_NIVEL: Final[float] = 0.02
 FATOR_CAPTURA: Final[float] = 1.0  # escala global, alvo da Fase 8
 P_CAPTURA_MINIMA: Final[float] = 0.05
 P_CAPTURA_MAXIMA: Final[float] = 0.90
 
+# NAO e a fonte do multiplicador em campo. A resolucao usa `Item.potencia` do
+# seed (SDD 3.1), que e de onde a carga da expedicao ja vem: ler as duas
+# fontes abriria a chance de elas discordarem, e a que vale no jogo seria a do
+# banco. Este dicionario fica como o valor ESPERADO do seed, conferido por
+# `test_seed_integridade.py`, para que um ingestor que mudasse a potencia de
+# uma Pokebola sem querer quebrasse um teste em vez de mover a economia em
+# silencio. Calibrar a captura e mexer em FATOR_CAPTURA, nao aqui.
 MULTIPLICADOR_BOLA: Final[dict[str, float]] = {
     "poke-ball": 1.0,
     "great-ball": 1.5,
     "ultra-ball": 2.0,
 }
+
+# --- Achados de item em campo (tarefa 7.12 do SDD) -------------------------
+
+# A regra existe para que uma expedicao se pague PARCIALMENTE em Pokebolas,
+# sem tornar irrelevante a loja da Fase 8. A conta que fixa os numeros:
+#
+#   consumo  — cada tentativa de captura gasta uma bola, e o numero de
+#              tentativas e limitado por slots_de_captura (3 a 5). Uma
+#              expedicao tipica de 5 encontros com 70% de vitoria gasta
+#              de 3 a 4 bolas.
+#   retorno  — bolas_por_vitoria = CHANCE_ITEM_POR_VITORIA
+#                                * peso_das_bolas / peso_total
+#                                * quantidade
+#              = 0,25 * 0,80 * 1 = 0,20 por vitoria num local de dificuldade
+#              baixa, e 0,25 * 0,80 * 2 = 0,40 em Mt. Moon (dificuldade 5).
+#
+# Com 3,5 vitorias por expedicao isso devolve de 0,7 a 1,4 bola contra 3 a 4
+# gastas: a expedicao paga de 20% a 35% da propria mochila. Qualquer numero
+# que passasse de 1,0 bola por vitoria faria a expedicao se financiar sozinha
+# e a economia da Fase 8 nasceria morta.
+CHANCE_ITEM_POR_VITORIA: Final[float] = 0.25
+
+# Pesos relativos do sorteio do achado. Somam 100 de proposito, para que o
+# peso se leia como porcentagem: Pokebola comum (80%), cura rara (20%).
+# A ordem e canonica e importa para o Artigo III — o sorteio acumula os pesos
+# na ordem desta tupla, e reordenar muda o resultado de toda semente gravada.
+TABELA_DE_ACHADOS: Final[tuple[tuple[str, int], ...]] = (
+    ("poke-ball", 65),
+    ("great-ball", 15),
+    ("potion", 15),
+    ("revive", 5),
+)
+
+# Pontos de nivel_dificuldade do local por unidade extra no achado:
+# quantidade = 1 + (nivel_dificuldade // DIFICULDADE_POR_ITEM_EXTRA).
+# Com 4, a faixa 1..3 do mapa inicial da 1, Mt. Moon (5) da 2 e so os locais
+# de dificuldade 8 a 10 dao 3. O lugar mais perigoso paga melhor sem que o
+# rendimento triplique logo na segunda rota.
+DIFICULDADE_POR_ITEM_EXTRA: Final[int] = 4
+
+# --- Relatorio de campo (spec 007) -----------------------------------------
+
+# Caracteres que o texto de um evento do relatorio pode ter. Nao e calibragem:
+# e a largura da coluna que guarda o texto, declarada aqui porque o Artigo IV
+# nao abre excecao para numero nenhum fora deste arquivo. Mesma natureza de
+# SEED_MAXIMO e de EXPOENTE_LIMITE_SIGMOIDE. A frase mais longa que as
+# variantes de `narrativa.py` produzem fica perto de 120 caracteres, e a folga
+# existe para nome de local e de item que ainda nao estao no seed.
+LIMITE_TEXTO_DO_EVENTO: Final[int] = 500
 
 # --- Treinador e laboratorio -----------------------------------------------
 

@@ -92,6 +92,7 @@ def _inserir_pokemon_livre(sessao_db, laboratorio_id: uuid.UUID, *, especie_id: 
         nivel=5,
         experiencia=0,
         hp_atual_pct=100,
+        hp_atualizado_em=datetime.now(UTC),
         origem="CAPTURADO",
         local_captura_id=None,
         capturado_em=datetime.now(UTC),

@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 # Os quatro valores que a coluna `status` grava (SDD 3.2) e os cinco que a
 # leitura pode mostrar: `AGUARDANDO_RELATORIO` nao e gravado, e derivado a
@@ -28,6 +28,28 @@ from pydantic import BaseModel
 StatusGravadoLer = Literal["EM_CURSO", "CONCLUIDA_SUCESSO", "CONCLUIDA_FALHA", "ABORTADA"]
 EstadoObservadoLer = Literal[
     "EM_CURSO", "AGUARDANDO_RELATORIO", "CONCLUIDA_SUCESSO", "CONCLUIDA_FALHA", "ABORTADA"
+]
+
+# O status final que um relatorio de campo pode gravar (spec 007):
+# `game.expedition.resolver` so devolve um dos dois — `ABORTADA` e decisao do
+# professor, nunca resultado de campo, entao nunca aparece aqui.
+StatusDoRelatorioLer = Literal["CONCLUIDA_SUCESSO", "CONCLUIDA_FALHA"]
+
+# Uniao fechada compartilhada com o frontend (plan.md, contratos de API):
+# `game.expedition.TipoDeEvento` e a fonte, repetida aqui porque schemas/ nao
+# importa Enum de game/ para o contrato Pydantic (mesma distancia que o resto
+# do modulo mantem do dominio).
+TipoDeEventoLer = Literal[
+    "PARTIDA",
+    "BATALHA",
+    "CAPTURA",
+    "CAPTURA_FALHA",
+    "DESCOBERTA",
+    "ITEM",
+    "CONTRATEMPO",
+    "SUBIU_NIVEL",
+    "EVOLUCAO",
+    "RETORNO",
 ]
 
 # --- Entrada -----------------------------------------------------------------
@@ -60,8 +82,95 @@ class ItemDaCargaLer(BaseModel):
     quantidade_consumida: int
 
 
-class ExpedicaoLer(BaseModel):
-    """Uma expedicao, com o estado e o tempo restante calculados agora mesmo.
+# --- Relatorio de campo (spec 007) -------------------------------------------
+
+
+class EventoDeExpedicaoLer(BaseModel):
+    """Uma linha da linha do tempo: o que o professor le (plan.md, contratos de API)."""
+
+    ordem: int
+    tipo: TipoDeEventoLer
+    texto: str
+    ocorrido_em_minuto: int
+    payload: dict[str, Any] | None = None
+
+
+class CapturaDoRelatorioLer(BaseModel):
+    """Um Pokemon capturado nesta expedicao, ja solto no laboratorio (regra 19)."""
+
+    especie_id: int
+    especie_nome: str
+    nivel: int
+    pokemon_id: uuid.UUID
+
+
+class PokemonDoRelatorioLer(BaseModel):
+    """O antes-e-depois de um Pokemon do time nesta expedicao."""
+
+    pokemon_id: uuid.UUID
+    especie_id: int
+    especie_nome: str
+    nivel_antes: int
+    nivel_depois: int
+    exp_ganha: int
+    hp_antes_pct: int
+    hp_depois_pct: int
+    evoluiu_para_id: int | None = None
+    evoluiu_para_nome: str | None = None
+
+
+class GanhoDeExperienciaLer(BaseModel):
+    """O ganho de experiencia de um nivel (treinador ou laboratorio) nesta expedicao."""
+
+    nivel_antes: int
+    nivel_depois: int
+    exp_ganha: int
+
+
+class ItemDoRelatorioLer(BaseModel):
+    """Um item consumido em campo ou achado em campo, ja somado por identificador."""
+
+    item_id: str
+    nome: str
+    quantidade: int
+
+
+class EspecieVistaLer(BaseModel):
+    """Uma especie enfrentada nesta expedicao, para o resumo da Pokedex."""
+
+    especie_id: int
+    nome: str
+    primeira_vez: bool
+
+
+class RelatorioDeCampoLer(BaseModel):
+    """O relatorio inteiro: a linha do tempo mais o resumo (plan.md, contratos de API).
+
+    So existe depois que `POST /expeditions/{id}/claim` resolve a expedicao;
+    ate la, `ExpedicaoLer.relatorio` vem nulo.
+    """
+
+    status: StatusDoRelatorioLer
+    resolvida_em: datetime
+    encontros: int
+    vitorias: int
+    derrotas: int
+    # Falso em falha, ou se o destino ja estava aberto antes desta expedicao
+    # (regra 15 e 16 da spec 007).
+    local_desbloqueado: bool
+    eventos: list[EventoDeExpedicaoLer]
+    capturas: list[CapturaDoRelatorioLer]
+    time: list[PokemonDoRelatorioLer]
+    treinador: GanhoDeExperienciaLer
+    laboratorio: GanhoDeExperienciaLer
+    itens_consumidos: list[ItemDoRelatorioLer]
+    itens_encontrados: list[ItemDoRelatorioLer]
+    especies_vistas: list[EspecieVistaLer]
+
+
+class ExpedicaoResumoLer(BaseModel):
+    """Uma linha de `GET /expeditions`, com o estado e o tempo restante
+    calculados agora mesmo (revisao da Fase 7, achado 1).
 
     `status` e o que esta gravado (`EM_CURSO` | `CONCLUIDA_SUCESSO` |
     `CONCLUIDA_FALHA` | `ABORTADA`); `estado_observado` e esse mesmo valor
@@ -70,6 +179,14 @@ class ExpedicaoLer(BaseModel):
     deve ler `estado_observado`, nunca `status` sozinho — e por isso os dois
     viajam juntos nesta resposta em vez de o cliente ter de rederivar um a
     partir do outro.
+
+    Sem `relatorio`: a listagem e o painel que o professor abre toda hora, e
+    com o historico crescendo sem teto, embutir a linha do tempo inteira de
+    cada expedicao (eventos, texto, payload) nela multiplicava o peso da
+    resposta por cada relatorio gravado. Quem quer o relatorio pede a ficha
+    (`GET /expeditions/{id}`) ou reclama (`POST /expeditions/{id}/claim`); a
+    listagem so diz QUE a expedicao tem relatorio, atraves de
+    `estado_observado` e `status`, nunca o CONTEUDO dele.
     """
 
     id: uuid.UUID
@@ -85,7 +202,20 @@ class ExpedicaoLer(BaseModel):
     status: StatusGravadoLer
     estado_observado: EstadoObservadoLer
 
+    # Serializado como STRING (revisao da Fase 7, achado 2): o Artigo III
+    # promete que a mesma semente reproduz o mesmo relatorio, mas semente real
+    # passa facilmente de 2**53-1 — o maior inteiro que o IEEE 754 de 64 bits
+    # do `JSON.parse` do navegador representa sem perda. Um `number` no corpo
+    # perderia os digitos finais antes mesmo de chegar ao estado do React; uma
+    # `string` atravessa JSON inteira, e o campo nunca e usado em aritmetica
+    # no cliente (so exibicao/depuracao), entao a troca de tipo nao custa nada
+    # a interface.
     seed: int
+
+    @field_serializer("seed")
+    def _serializar_seed(self, seed: int) -> str:
+        return str(seed)
+
     started_at: datetime
     eta: datetime
     resolvida_em: datetime | None
@@ -103,10 +233,32 @@ class ExpedicaoLer(BaseModel):
     carga: list[ItemDaCargaLer]
 
 
-class ListaExpedicoes(BaseModel):
-    """Sem paginacao por pagina/tamanho (plan.md): so `items` e `total`."""
+class ExpedicaoLer(ExpedicaoResumoLer):
+    """A ficha completa de uma expedicao: `ExpedicaoResumoLer` mais o relatorio.
 
-    items: list[ExpedicaoLer]
+    Resposta de `GET /expeditions/{id}` e do `expedicao` dentro de
+    `POST /expeditions/{id}/claim` — os dois lugares em que o professor pede
+    uma expedicao especifica, nunca a listagem.
+    """
+
+    # Nulo ate a expedicao resolver (spec 007): o relatorio so nasce no
+    # `POST /expeditions/{id}/claim`, e este `GET` continua sem escrever nada.
+    relatorio: RelatorioDeCampoLer | None = None
+
+
+class ListaExpedicoes(BaseModel):
+    """`GET /expeditions`: sem paginacao por pagina/tamanho (plan.md).
+
+    Limitada por `limite` no SERVIDOR (revisao da Fase 7, achado 1), nao por
+    pagina: o painel sempre pede as N expedicoes mais recentes de um
+    laboratorio — nunca "a pagina 7" — entao um parametro com teto resolve o
+    uso real sem o custo de um cursor que ninguem navega. `total` continua
+    sendo a contagem de `items` nesta pagina (equivalente a `len(items)`), nao
+    o total historico do laboratorio: expor o total historico exigiria uma
+    segunda consulta so para um numero que a tela nao usa.
+    """
+
+    items: list[ExpedicaoResumoLer]
     total: int
 
 
@@ -129,3 +281,16 @@ class PreviaDespachoLer(BaseModel):
 
     codigo: str | None = None
     motivo: str | None = None
+
+
+class ExpedicaoClaimLer(BaseModel):
+    """Resposta de `POST /expeditions/{id}/claim` (plan.md, contratos de API).
+
+    `expedicao` e a mesma `ExpedicaoLer` de sempre, com `status` ja terminal;
+    `relatorio` repete o que `expedicao.relatorio` traz, como campo proprio no
+    topo da resposta — e o momento do jogo que o ADR-006 criou, e merece um
+    lugar de destaque no corpo, nao so um campo aninhado.
+    """
+
+    expedicao: ExpedicaoLer
+    relatorio: RelatorioDeCampoLer

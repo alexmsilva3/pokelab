@@ -33,7 +33,7 @@ Tudo que decide mora em `app/game/`. A resolução inteira é uma função pura:
 resolver(contexto: ContextoDeResolucao, gerador: GeradorAleatorio) -> RelatorioDeCampo
 ```
 
-`ContextoDeResolucao` é um retrato imutável do envio: time (espécie, nível, experiência, HP, curva, stats-base, evolução), nível do treinador, local de destino (dificuldade, faixa de nível, encontros-base, tabela de encontros com peso), carga restante por item, espécies já vistas na Pokédex, duração em minutos. `RelatorioDeCampo` traz os eventos em ordem, o estado final de cada Pokémon do time, as capturas, o consumo por item, os itens achados, os avistamentos, a experiência do treinador e do laboratório, e o status final.
+`ContextoDeResolucao` é um retrato imutável do envio: time (espécie, nível, experiência, HP, curva, stats-base, evolução), nível do treinador, local de destino (dificuldade, faixa de nível, encontros-base, tabela de encontros com peso), carga restante por item, as espécies já vistas **segundo o retrato gravado no despacho** (`expedicoes.especies_vistas_no_envio`, nunca uma leitura da Pokédex no `claim`), duração em minutos. `RelatorioDeCampo` traz os eventos em ordem, o estado final de cada Pokémon do time, as capturas, o consumo por item, os itens achados, os avistamentos, a experiência do treinador e do laboratório, e o status final.
 
 O serviço não decide nada: abre transação, trava a linha, monta o contexto, chama `resolver`, grava o que voltou. Essa separação é o que torna o critério 3 testável sem banco.
 
@@ -95,7 +95,7 @@ Depois de aplicada a experiência, enquanto `evolui_para_id` existir e `nivel >=
 
 ## Achados de item
 
-Nova regra, tarefa 7.12 do SDD. Após cada vitória, uma rolagem de `CHANCE_ITEM_POR_VITORIA` decide se houve achado; havendo, o item sai de uma tabela ponderada em que a Pokébola é comum e a cura é rara, e a quantidade cresce com a dificuldade do local:
+Nova regra, tarefa 7.6 do SDD. Após cada vitória, uma rolagem de `CHANCE_ITEM_POR_VITORIA` decide se houve achado; havendo, o item sai de uma tabela ponderada em que a Pokébola é comum e a cura é rara, e a quantidade cresce com a dificuldade do local:
 
 ```
 quantidade = 1 + (nivel_dificuldade_local // DIFICULDADE_POR_ITEM_EXTRA)
@@ -105,7 +105,21 @@ Os achados entram no **estoque do laboratório** na resolução, não na carga �
 
 ## Migração
 
-Uma só: `pokemon_instancias.hp_atualizado_em`, `timestamptz NOT NULL`, default no servidor para as linhas existentes. `downgrade` derruba a coluna.
+Duas, nesta ordem.
+
+| Migração | Coluna | Tipo | Backfill das linhas existentes |
+|---|---|---|---|
+| `20261106_2300` | `pokemon_instancias.hp_atualizado_em` | `timestamptz NOT NULL` | `now()` — "a recuperação destas começa a contar agora" |
+| `20261106_2300` | `expedicoes.relatorio_resumo` | `jsonb NULL` | nenhum: nulo até resolver |
+| `20261107_0221` | `expedicoes.especies_vistas_no_envio` | `jsonb NOT NULL` | `'[]'` |
+
+Nas duas colunas `NOT NULL` o default no servidor existe só para o backfill e é removido em seguida, para que um `INSERT` futuro que esqueça a coluna quebre alto em vez de gravar um valor plausível em silêncio. `relatorio_resumo` nasce anulável e sem default, porque "ainda não resolvida" é estado legítimo. Cada `downgrade` derruba o que a sua migração criou.
+
+A segunda migração não estava prevista: veio da revisão da fase. `_montar_contexto` lia a Pokédex viva no instante do `claim`, fora de qualquer lock — o relatório deixava de ser função só da semente e do envio (invariante 19), e dois `claim`s concorrentes do mesmo laboratório liam a Pokédex "antes de qualquer um gravar" e anunciavam a mesma `DESCOBERTA` duas vezes. `especies_vistas_no_envio` grava o retrato no despacho e o `claim` passa a ler só essa coluna.
+
+O backfill com lista vazia é a única opção honesta: não há como saber retroativamente o que uma expedição já em curso conhecia ao partir. Na pior hipótese uma dessas linhas antigas repete uma `DESCOBERTA` que a Pokédex atual já tem — inócuo, e nunca o contrário.
+
+A consequência observável dessa troca está na spec (regra 12, critérios 17, 18 e 23) e no SDD 4.7: uma espécie descoberta depois do despacho continua sendo anunciada como novidade quando aquela expedição é reclamada. Escolha deliberada — um relatório que não muda conforme a hora do clique vale mais que um texto ocasionalmente redundante.
 
 ## Endpoint
 
@@ -187,6 +201,16 @@ Uma segunda chamada numa expedição já resolvida devolve **o mesmo corpo**, co
 ### `GET /expeditions/{id}` → 200
 
 Ganha `"relatorio": { ... } | null`. Nulo enquanto não resolvida. Nenhum outro campo muda, e a rota continua sem escrever.
+
+### `GET /expeditions` → 200 (revisão pós-Fase 7, achados 1 e 2)
+
+Dois ajustes de contrato, depois de medir ~2 KB por expedição numa listagem real de relatórios de 2 encontros e 9 eventos.
+
+**`items` não é mais `ExpedicaoLer`.** É `ExpedicaoResumoLer`: os mesmos campos de sempre (`id`, `treinador_id`, locais, `status`, `estado_observado`, `seed`, `started_at`, `eta`, `resolvida_em`, duração, dificuldade, poder, `segundos_restantes`, `carga`) **sem** `relatorio`. Com 200 expedições resolvidas, cada abertura do painel serializava 200 linhas do tempo completas — `eventos`, `texto` e `payload` inclusos — que ninguém olhava na lista. Quem quer o relatório pede a ficha (`GET /expeditions/{id}`, que continua `ExpedicaoLer` com `relatorio`) ou reclama (`POST /expeditions/{id}/claim`). A lista diz QUE há relatório através de `estado_observado`/`status`; o conteúdo só sai sob pedido explícito de uma expedição.
+
+**Ganha `limite` na query string**, inteiro, padrão 20, teto 100 (422 acima disso). Decisão: parâmetro com teto, não paginação por cursor. O painel sempre quer "as N expedições mais recentes deste laboratório" — nunca "a página 7" — e um cursor existiria só para resolver um caso de uso que a interface não tem. O corte acontece **na consulta**, antes do filtro por `status`: a resposta é "as `limite` mais recentes, dentre as quais estas batem o filtro", não "as `limite` que batem o filtro em todo o histórico". Na prática isso nunca incomoda o painel de ativas — uma expedição `EM_CURSO`/`AGUARDANDO_RELATORIO` é sempre recente por construção — e o histórico pode pedir um `limite` maior quando precisar enxergar mais para trás.
+
+**`seed` é serializado como STRING**, em `ExpedicaoResumoLer`, `ExpedicaoLer` e em toda resposta que carregue um dos dois (claim incluso). `balance.SEED_MAXIMO = 2**63 - 1` estoura os 2^53-1 bits seguros do `number` do JavaScript; uma semente real como `3500104150819416180` chegava ao navegador como `3500104150819416000` — precisão perdida antes mesmo do primeiro `JSON.parse`, o que quebra silenciosamente o Artigo III (reproduzir um relatório a partir da semente). Decisão: manter o campo (ele tem uso — depuração e a promessa de reprodutibilidade), só mudando o tipo de serialização; nenhum outro campo da API carrega um inteiro fora da faixa segura, então a troca fica isolada a `seed`. **Efeito no frontend:** `RelatorioDeCampo`/`ExpedicaoLer.seed` em `web/src/api/tipos.ts` passa de `number` para `string`; nenhuma aritmética é esperada sobre este campo, só exibição/depuração.
 
 ### Leituras de Pokémon
 

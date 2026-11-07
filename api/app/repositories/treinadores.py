@@ -82,6 +82,13 @@ def travar_treinador(
 
     So a linha do treinador, sem o time: quem precisa dos Pokemon travados
     tambem chama `travar_pokemon_envolvidos` na mesma transacao.
+
+    Sem `populate_existing` de proposito, ao contrario de
+    `laboratorios_repo.travar` (auditoria da revisao da Fase 7): nenhuma
+    dependencia de rota pre-carrega um `Treinador` antes do servico pedir o
+    lock — `professor_atual` so toca `Professor` e `Laboratorio` — entao este
+    `SELECT` e sempre a primeira vez que ESTE registro entra no identity map
+    da sessao da requisicao. Nao ha leitura antiga para o lock deixar intocada.
     """
     return sessao.scalar(
         select(Treinador)
@@ -100,6 +107,11 @@ def travar_treinador_com_time(
     entao a trava nunca encosta num `PokemonInstancia`, so no treinador. E o
     que basta: o despacho so precisa impedir que ESTE treinador va para duas
     expedicoes ao mesmo tempo, nao congelar o time dele.
+
+    Sem `populate_existing`: mesmo raciocinio de `travar_treinador` acima —
+    nada pre-carrega este `Treinador` antes do despacho ou do `claim`
+    chamarem esta funcao, entao nao ha objeto obsoleto no identity map para
+    `with_for_update()` deixar de atualizar.
     """
     consulta = _com_time_e_especie(
         select(Treinador).where(
@@ -112,6 +124,16 @@ def travar_treinador_com_time(
 def atualizar_status(treinador: Treinador, status: StatusTreinador) -> None:
     """Grava o novo status do treinador (ocupado ao despachar, livre ao voltar ou abortar)."""
     treinador.status = status.value
+
+
+def concluir_expedicao(treinador: Treinador, *, nivel: int, experiencia: int) -> None:
+    """Fecha o ciclo da expedicao (regra 20 da spec 007): libera o treinador,
+    grava a progressao que `game.trainers` ja calculou e soma mais uma
+    expedicao concluida ao historico dele."""
+    treinador.status = StatusTreinador.DISPONIVEL.value
+    treinador.nivel = nivel
+    treinador.experiencia = experiencia
+    treinador.expedicoes_concluidas += 1
 
 
 def _pokemon_envolvidos(
@@ -161,6 +183,10 @@ def travar_pokemon_envolvidos(
     ler o mesmo Pokemon como livre antes de qualquer um dos dois gravar, e os
     dois o atribuem. Com a trava, o segundo bloqueia ate o primeiro terminar e
     enxerga o `treinador_id` ja gravado por ele.
+
+    Sem `populate_existing`, pelo mesmo motivo de `travar_treinador`: nenhum
+    `PokemonInstancia` chega pre-carregado na sessao da requisicao antes desta
+    chamada (a previa, que leria sem lock, e sempre uma requisicao separada).
     """
     consulta = _pokemon_envolvidos(laboratorio_id, treinador_id, pokemon_ids).with_for_update()
     return list(sessao.scalars(consulta))

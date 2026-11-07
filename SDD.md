@@ -105,7 +105,7 @@ A resolução de uma expedição vencida acontece em `POST /expeditions/{id}/cla
 
 **Preço:** o treinador fica ocupado até o professor voltar para buscar o relatório. É o modelo de frota, e é pressão de design deliberada.
 
-Revê a tarefa 7.7, que pedia resolução dentro do `GET /expeditions/{id}`.
+Revê a tarefa 7.7 da versão original da Fase 7, que pedia resolução dentro do `GET /expeditions/{id}`. Na tabela atual, a 7.7 é o laço de resolução no domínio e a 7.13 é o `claim`.
 
 ---
 
@@ -148,11 +148,15 @@ Professor (1) ── (1) Laboratorio
 
 O nível do laboratório não é decorativo: ele define `limite_treinadores`, e é por aí que o professor expande a própria capacidade de operar. Não há `slots_expedicao` — o limite de expedições simultâneas é o número de treinadores disponíveis.
 
-**PokemonInstancia** — `id`, `laboratorio_id`, `especie_id`, `apelido`, `nivel`, `experiencia`, `hp_atual_pct` (0..100, desgaste pós-expedição), `treinador_id` (nulo = está no laboratório), `comprometido_entrega_id` (nulo = livre), `origem` (`INICIAL` | `CAPTURADO` | `EVOLUCAO`), `local_captura_id`, `capturado_em`.
+**PokemonInstancia** — `id`, `laboratorio_id`, `especie_id`, `apelido`, `nivel`, `experiencia`, `hp_atual_pct` (0..100, desgaste pós-expedição), `hp_atualizado_em` (marco da recuperação passiva, 4.8), `treinador_id` (nulo = está no laboratório), `comprometido_entrega_id` (nulo = livre, chega na Fase 8), `origem` (`INICIAL` | `CAPTURADO` | `EVOLUCAO`), `local_captura_id`, `capturado_em`.
 
 **Treinador** — `id`, `laboratorio_id`, `nome`, `avatar`, `nivel`, `experiencia`, `status` (`DISPONIVEL` | `EM_EXPEDICAO` | `EM_ENTREGA` | `DESCANSANDO`), `expedicoes_concluidas`, `entregas_concluidas`.
 
-**Expedicao** — `id`, `laboratorio_id`, `treinador_id`, `local_destino_id`, `local_origem_id`, `status` (`EM_CURSO` | `CONCLUIDA_SUCESSO` | `CONCLUIDA_FALHA` | `ABORTADA`), `seed`, `started_at`, `eta`, `resolvida_em`, `duracao_minutos`, `dificuldade_calculada`, `poder_time_calculado`.
+**Expedicao** — `id`, `laboratorio_id`, `treinador_id`, `local_destino_id`, `local_origem_id`, `status` (`EM_CURSO` | `CONCLUIDA_SUCESSO` | `CONCLUIDA_FALHA` | `ABORTADA`), `seed`, `started_at`, `eta`, `resolvida_em`, `duracao_minutos`, `dificuldade_calculada`, `poder_time_calculado`, `especies_vistas_no_envio`, `relatorio_resumo`.
+
+`especies_vistas_no_envio` é a lista de `especie_id` que o laboratório já tinha marcado como vista **no instante do despacho**, gravada junto com a expedição e nunca mais alterada. É o que torna o invariante 19 verdadeiro na letra: sem ela, decidir se um encontro é descoberta exigiria ler a Pokédex viva na hora de reclamar o relatório, e o resultado deixaria de ser função só da semente e do envio. O efeito prático dessa escolha está em 4.7, e não é inteiramente confortável.
+
+`relatorio_resumo` guarda tudo o que o relatório mostra além da linha do tempo — que mora em `ExpedicaoEvento`: capturas com o id do Pokémon criado, antes e depois de cada membro do time, experiência de treinador e de laboratório com nível antes e depois, itens consumidos e achados, e se o destino foi desbloqueado. Existe porque esses números precisam ser **lembrados, não recalculados**: treinador e laboratório continuam subindo de nível em expedições posteriores, e um relatório antigo recalculado a partir do estado de hoje mentiria sobre quanto aquela missão rendeu. Nulo enquanto a expedição não foi resolvida.
 
 **ExpedicaoEvento** — `id`, `expedicao_id`, `ordem`, `tipo` (`PARTIDA` | `BATALHA` | `CAPTURA` | `CAPTURA_FALHA` | `DESCOBERTA` | `ITEM` | `CONTRATEMPO` | `SUBIU_NIVEL` | `EVOLUCAO` | `RETORNO`), `texto`, `payload` (JSONB), `ocorrido_em_minuto`.
 
@@ -354,7 +358,13 @@ Atingida a capacidade, o treinador para de capturar mas **continua registrando**
 
 ### 4.7 Descoberta e desbloqueio
 
-Uma espécie vista pela primeira vez gera `DESCOBERTA` e marca `visto` na Pokédex mesmo sem captura.
+Uma espécie que **não estava no retrato da Pokédex gravado no despacho** gera `DESCOBERTA` ao ser enfrentada, e marca `visto` na Pokédex na resolução, com ou sem captura. O critério é o retrato (`Expedicao.especies_vistas_no_envio`, 3.2), nunca a Pokédex no instante em que o professor recebe o relatório.
+
+A diferença entre as duas leituras não é acadêmica. Ler a Pokédex viva no `claim` quebra o invariante 19 — o relatório passaria a depender de quando o professor clicou — e, pior, quebra sem avisar: dois `claim`s concorrentes do mesmo laboratório leem a Pokédex antes de qualquer um dos dois escrever nela, e ambos anunciam a mesma descoberta. O retrato é o preço de um relatório que é o mesmo sempre, qualquer que seja a ordem em que o professor abre as expedições que já voltaram.
+
+**A consequência estranha, comprada de olhos abertos:** uma espécie descoberta *depois* do despacho ainda é anunciada como `DESCOBERTA` quando aquela expedição é reclamada. Duas expedições despachadas lado a lado para Route 1, ambas com Pidgey ausente do retrato, anunciam Pidgey como novidade duas vezes — mesmo que a primeira já o tenha registrado. É mentira narrativa, não corrupção de estado: a Pokédex é escrita por `UPSERT`, `primeiro_visto_em` guarda a data da primeira gravação e `vezes_visto` soma; nenhum contador duplica e nada retrocede. Só o texto do relatório se repete.
+
+Trocar essa estranheza por uma leitura viva significaria trocar um relatório ocasionalmente redundante por um relatório que muda conforme a hora do clique. Entre as duas, o jogo prefere a redundância: o relatório é o retrato do que o treinador viu em campo, e o treinador saiu sem saber o que o laboratório ia aprender na ausência dele.
 
 Uma expedição `CONCLUIDA_SUCESSO` grava `LocalDesbloqueado` para o destino. A partir daí, novas expedições podem partir desse local, e seus vizinhos tornam-se destinos válidos. O laboratório (Pallet) é o único local desbloqueado na criação do perfil.
 
@@ -628,7 +638,7 @@ Spec em [specs/005-mapa-de-kanto/](specs/005-mapa-de-kanto/). 1062 testes de bac
 |---|---|---|---|
 | 5.1 | ~~Modelos `Local`, `LocalEncontro`, `LocalDesbloqueado`~~ — já prontos nas Fases 1 e 2 | — | — |
 | 5.2 | `game/mapa.py`: adjacência (invariante 6), alcance, origem ótima por custo de travessia e duração estimada | `pokelab-domain` | `pokelab-domain-rules` |
-| 5.3 | Modelo `PokedexAvistamento` e migração. A Fase 5 só lê; quem escreve é a tarefa 7.10 | `pokelab-api` | — |
+| 5.3 | Modelo `PokedexAvistamento` e migração. A Fase 5 só lê; quem escreve é a tarefa 7.14 | `pokelab-api` | — |
 | 5.4 | `GET /map`: os dez locais com estado, origem ótima, duração estimada, e o que falta desbloquear | `pokelab-api` | `pokelab-api-conventions` |
 | 5.5 | `GET /map/{id}`: dificuldade, faixa de nível, duração estimada e espécies **já avistadas ali** — nunca o pool real | `pokelab-api` | `pokelab-api-conventions` |
 | 5.6 | Tela Mapa: lista ordenada por distância, com estado por local e o caminho até os bloqueados | `pokelab-frontend` | `pokelab-ui-kit` |
@@ -676,7 +686,7 @@ Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqu
 | 7.8 | Textos narrativos dos eventos em português, por tipo, com interpolação de nomes e números | `pokelab-domain` | `pokelab-ui-kit` |
 | 7.9 | `game/stats.py::hp_recuperado`: recuperação passiva derivada do relógio (4.8) | `pokelab-domain` | `pokelab-domain-rules` |
 | 7.10 | Constantes novas em `balance.py` com nome, unidade e motivo | `pokelab-domain` | `pokelab-domain-rules` |
-| 7.11 | Coluna `hp_atualizado_em` e migração com `downgrade` | `pokelab-api` | `pokelab-api-conventions` |
+| 7.11 | Colunas `pokemon_instancias.hp_atualizado_em`, `expedicoes.relatorio_resumo` e `expedicoes.especies_vistas_no_envio`, em duas migrações com `downgrade` — a terceira coluna veio da revisão (3.2 e 4.7) | `pokelab-api` | `pokelab-api-conventions` |
 | 7.12 | Materialização do HP recuperado no despacho | `pokelab-api` | `pokelab-api-conventions` |
 | 7.13 | `POST /expeditions/{id}/claim`: transação com `SELECT ... FOR UPDATE`, checagem de status, idempotência (ADR-006) | `pokelab-api` | `pokelab-api-conventions` |
 | 7.14 | Escrita do resultado: capturas, HP do time, Pokédex, avistamentos, desbloqueio, estoque, treinador livre | `pokelab-api` | `pokelab-domain-rules` |
@@ -727,7 +737,7 @@ Depende da Fase 7: a entrega só faz sentido quando existem Pokémon capturados 
 | 9.2 | Relatório de curvas: taxa de sucesso, capturas por hora, EXP por hora, tempo até desbloquear o mapa inteiro | `pokelab-balance` | `dataviz` |
 | 9.3 | Ajustar `balance.py` para as metas: ~70% de sucesso com time adequado, ~25% com time subnivelado | `pokelab-balance` | `pokelab-domain-rules` |
 | 9.4 | Calibrar `custo_travessia_minutos` e `encontros_base` por local: duração percebida, rendimento por hora e o ganho real de desbloquear cada local | `pokelab-balance` | `pokelab-data-seed` |
-| 9.5 | Calibrar a economia de itens (tarefa 7.12) para que o estoque não seque nem acumule | `pokelab-balance` | `pokelab-domain-rules` |
+| 9.5 | Calibrar a economia de itens (tarefas 7.5 e 7.6: consumo de cura e achados em campo) para que o estoque não seque nem acumule | `pokelab-balance` | `pokelab-domain-rules` |
 | 9.6 | Calibrar a curva de nível do laboratório: quantas expedições e entregas até o 4º treinador, e se o ritmo acompanha o acesso a locais mais difíceis | `pokelab-balance` | `pokelab-domain-rules` |
 | 9.7 | Calibrar a economia de entregas: moeda por hora, e se entregar um Pokémon de nível alto compensa perdê-lo | `pokelab-balance` | `pokelab-domain-rules` |
 | 9.8 | Testes de regressão de balanceamento (faixas aceitáveis, não valores exatos) | `pokelab-test` | — |
@@ -835,7 +845,7 @@ A spec é atualizada quando a realidade diverge dela. Código que contraria a sp
 | Risco | Impacto | Mitigação |
 |---|---|---|
 | Fórmulas de balanceamento produzem progressão sem graça | Alto — mata o jogo | Fase 8 com simulação antes de qualquer ajuste manual; constantes isoladas de fórmulas |
-| Resolução preguiçosa concorrente duplica recompensas | Alto — corrompe estado | Lock de linha + checagem de status; teste 7.11 obrigatório |
+| Resolução preguiçosa concorrente duplica recompensas | Alto — corrompe estado | Lock de linha + checagem de status; teste 7.21 obrigatório |
 | Escopo da Fase 7 cresce para engine de turnos | Alto — atrasa indefinidamente | ADR-003 fecha a decisão; a interface `EncounterResolver` é a válvula de escape |
 | Dados da PokeAPI mudam ou saem do ar | Médio | Seed versionado no repositório; runtime nunca depende da API |
 | Grafo de Kanto montado à mão fica incoerente | Médio | Teste 1.8: alcançabilidade de todo local a partir de Pallet |
@@ -920,7 +930,7 @@ Com `DIVISOR_QUANTIDADE_POR_CAPTURA = 85`: Rattata, Caterpie e Pidgey (taxa 255)
 13. ~~Existe moeda?~~ **Resolvido 2026-11-05: sim, paga pelas entregas.** O que ela compra continua em aberto (questão 19).
 
 **Pós-v1**
-23. O mapa de distribuição de espécies por região, alimentado por `PokedexAvistamento`. Os dados passam a ser coletados na v1 (tarefa 7.10); falta decidir como são mostrados — camada no mapa, janela própria de Pokédex por local, ou filtro na hora de escolher o destino da expedição.
+23. O mapa de distribuição de espécies por região, alimentado por `PokedexAvistamento`. Os dados passam a ser coletados na v1 (tarefa 7.14); falta decidir como são mostrados — camada no mapa, janela própria de Pokédex por local, ou filtro na hora de escolher o destino da expedição.
 
 **Transversal**
 14. ~~Host do repositório.~~ **Resolvido 2026-11-05: GitHub pessoal.** Workflow em `.github/workflows/ci.yml`, chamando `ci/pipeline.sh`.

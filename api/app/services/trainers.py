@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.erros import ConflitoDeTime, RecursoNaoEncontrado
 from app.game import balance, team
 from app.game import trainers as trainers_dominio
@@ -32,10 +34,36 @@ from app.schemas.trainers import (
     TrainerDetalhe,
     TrainerResumo,
 )
+from app.services import relogio
 
 
-def _pokemon_no_time(pokemon: PokemonInstancia) -> PokemonNoTime:
-    """`pokemon` precisa chegar com `especie` ja carregada (sem lazy load)."""
+def _hp_observado(
+    pokemon: PokemonInstancia, treinador: Treinador, agora: datetime, escala: float
+) -> int:
+    """O HP que a ficha do treinador mostra: o gravado mais a recuperacao passiva.
+
+    Mesma fronteira de `services.pokemon._hp_observado` (spec 007, criterios
+    20 e 21): o time do treinador e uma das leituras que a tarefa manda nao
+    esquecer. Invariante 18: um treinador `EM_EXPEDICAO` (ou `EM_ENTREGA`) tem
+    o time parado no estado em que partiu — a enfermaria so corre quando ele
+    volta, nao enquanto esta em campo.
+    """
+    if trainers_dominio.status_de(treinador.status).ocupado:
+        return pokemon.hp_atual_pct
+    return relogio.hp_observado(
+        pokemon.hp_atual_pct, pokemon.hp_atualizado_em, agora=agora, escala=escala
+    )
+
+
+def _pokemon_no_time(
+    pokemon: PokemonInstancia, treinador: Treinador, agora: datetime, escala: float
+) -> PokemonNoTime:
+    """`pokemon` precisa chegar com `especie` ja carregada (sem lazy load).
+
+    O poder usa o HP OBSERVADO, nao o cru: um Pokemon que ja recuperou metade
+    do dano no laboratorio deve pesar mais na previa do que o numero gravado
+    sugeriria.
+    """
     especie = pokemon.especie
     base = StatsBase(
         hp=especie.hp_base,
@@ -45,14 +73,19 @@ def _pokemon_no_time(pokemon: PokemonInstancia) -> PokemonNoTime:
         defesa_especial=especie.defesa_especial_base,
         velocidade=especie.velocidade_base,
     )
-    return PokemonNoTime.a_partir_dos_stats(base, pokemon.nivel, pokemon.hp_atual_pct)
+    return PokemonNoTime.a_partir_dos_stats(
+        base, pokemon.nivel, _hp_observado(pokemon, treinador, agora, escala)
+    )
 
 
-def _poder_do_treinador(treinador: Treinador) -> int:
-    return poder_do_time((_pokemon_no_time(pokemon) for pokemon in treinador.time), treinador.nivel)
+def _poder_do_treinador(treinador: Treinador, agora: datetime, escala: float) -> int:
+    return poder_do_time(
+        (_pokemon_no_time(pokemon, treinador, agora, escala) for pokemon in treinador.time),
+        treinador.nivel,
+    )
 
 
-def _campos_comuns(treinador: Treinador) -> dict:
+def _campos_comuns(treinador: Treinador, agora: datetime, escala: float) -> dict:
     return {
         "id": treinador.id,
         "nome": treinador.nome,
@@ -62,28 +95,40 @@ def _campos_comuns(treinador: Treinador) -> dict:
         "status": treinador.status,
         "ocupado": trainers_dominio.status_de(treinador.status).ocupado,
         "tamanho_maximo_time": balance.TAMANHO_MAXIMO_TIME,
-        "time": [PokemonResumo.de_modelo(pokemon) for pokemon in treinador.time],
+        "time": [
+            PokemonResumo.de_modelo(
+                pokemon, hp_atual_pct=_hp_observado(pokemon, treinador, agora, escala)
+            )
+            for pokemon in treinador.time
+        ],
         "capacidade_bagagem": team.capacidade_bagagem_tolerante(len(treinador.time)),
     }
 
 
-def _montar_resumo(treinador: Treinador) -> TrainerResumo:
-    return TrainerResumo(**_campos_comuns(treinador))
+def _montar_resumo(treinador: Treinador, agora: datetime, escala: float) -> TrainerResumo:
+    return TrainerResumo(**_campos_comuns(treinador, agora, escala))
 
 
-def _montar_detalhe(treinador: Treinador) -> TrainerDetalhe:
+def _montar_detalhe(treinador: Treinador, agora: datetime, escala: float) -> TrainerDetalhe:
     return TrainerDetalhe(
-        **_campos_comuns(treinador),
+        **_campos_comuns(treinador, agora, escala),
         experiencia_para_proximo_nivel=trainers_dominio.experiencia_para_o_proximo_nivel(
             treinador.experiencia
         ),
-        poder=_poder_do_treinador(treinador),
+        poder=_poder_do_treinador(treinador, agora, escala),
     )
+
+
+def _agora_e_escala() -> tuple[datetime, float]:
+    return datetime.now(UTC), get_settings().expedition_time_scale
 
 
 def listar(sessao: Session, laboratorio_id: uuid.UUID) -> ListaTrainers:
     treinadores = treinadores_repo.listar(sessao, laboratorio_id)
-    return ListaTrainers(items=[_montar_resumo(treinador) for treinador in treinadores])
+    agora, escala = _agora_e_escala()
+    return ListaTrainers(
+        items=[_montar_resumo(treinador, agora, escala) for treinador in treinadores]
+    )
 
 
 def obter_detalhe(
@@ -92,7 +137,8 @@ def obter_detalhe(
     treinador = treinadores_repo.buscar_detalhe(sessao, laboratorio_id, treinador_id)
     if treinador is None:
         raise RecursoNaoEncontrado()
-    return _montar_detalhe(treinador)
+    agora, escala = _agora_e_escala()
+    return _montar_detalhe(treinador, agora, escala)
 
 
 def _pokemon_conhecidos(pokemon: Sequence[PokemonInstancia]) -> list[team.PokemonParaTime]:
@@ -163,7 +209,8 @@ def definir_time(
     atualizado = treinadores_repo.buscar_detalhe(sessao, laboratorio_id, treinador_id)
     if atualizado is None:  # pragma: no cover - impossivel, acabamos de gravar nele
         raise RecursoNaoEncontrado()
-    return _montar_detalhe(atualizado)
+    agora, escala = _agora_e_escala()
+    return _montar_detalhe(atualizado, agora, escala)
 
 
 def prever_time(
@@ -191,15 +238,19 @@ def prever_time(
         _alvo(treinador), pokemon_ids, _pokemon_conhecidos(pokemon_relevantes)
     )
 
+    agora, escala = _agora_e_escala()
     if previa.valido and previa.time is not None:
         membros = [pokemon_por_id[pokemon_id] for pokemon_id in previa.time.pokemon_ids]
-        poder = poder_do_time((_pokemon_no_time(item) for item in membros), treinador.nivel)
+        poder = poder_do_time(
+            (_pokemon_no_time(item, treinador, agora, escala) for item in membros),
+            treinador.nivel,
+        )
         capacidade = previa.time.capacidade_bagagem
     else:
         # Regra do dominio (team.py): composicao recusada nao muda nada, entao
         # o que a tela deve continuar mostrando e o time ATUAL, nao o
         # hipotetico.
-        poder = _poder_do_treinador(treinador)
+        poder = _poder_do_treinador(treinador, agora, escala)
         capacidade = team.capacidade_bagagem(len(treinador.time))
 
     return PreviaTimeLer(

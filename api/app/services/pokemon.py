@@ -9,17 +9,21 @@ servico le `PokemonInstancia` do banco, monta `StatsBase` com os seis campos
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.erros import RecursoNaoEncontrado
 from app.game import balance
+from app.game import trainers as trainers_dominio
 from app.game.experience import experiencia_para_o_proximo_nivel
 from app.game.stats import StatsBase, calcular_stats_efetivos, hp_atual_absoluto
 from app.models import PokemonInstancia
 from app.repositories import pokemon as pokemon_repo
 from app.repositories.pokemon import FiltrosPokemon
 from app.schemas.pokemon import PaginaPokemon, PokemonDetalhe, PokemonResumo, StatsEfetivosLer
+from app.services import relogio
 
 
 def listar(
@@ -33,8 +37,13 @@ def listar(
     itens, total, page_efetivo, page_size_efetivo = pokemon_repo.listar(
         sessao, laboratorio_id, filtros, page=page, page_size=page_size
     )
+    agora = datetime.now(UTC)
+    escala = get_settings().expedition_time_scale
     return PaginaPokemon(
-        items=[PokemonResumo.de_modelo(pokemon) for pokemon in itens],
+        items=[
+            PokemonResumo.de_modelo(pokemon, hp_atual_pct=_hp_observado(pokemon, agora, escala))
+            for pokemon in itens
+        ],
         total=total,
         page=page_efetivo,
         page_size=page_size_efetivo,
@@ -64,7 +73,33 @@ def atualizar_apelido(
     return _montar_detalhe(pokemon)
 
 
+def _hp_observado(pokemon: PokemonInstancia, agora: datetime, escala: float) -> int:
+    """O `hp_atual_pct` que a leitura mostra: o gravado mais a recuperacao passiva.
+
+    Fronteira do Artigo I (spec 007, criterios 20 e 21): o relogio e a escala
+    de tempo (`EXPEDITION_TIME_SCALE`) sao lidos aqui, nunca em `app.game`.
+
+    Invariante 18: a enfermaria so corre no laboratorio. Um Pokemon cujo
+    treinador esta `EM_EXPEDICAO` (ou `EM_ENTREGA`, quando essa feature
+    existir) nao recupera nada, mesmo que muito tempo real tenha passado
+    desde `hp_atualizado_em` — ele esta em campo, nao parado na enfermaria.
+    `pokemon.treinador` precisa chegar carregado (sem lazy load).
+    """
+    if (
+        pokemon.treinador is not None
+        and trainers_dominio.status_de(pokemon.treinador.status).ocupado
+    ):
+        return pokemon.hp_atual_pct
+    return relogio.hp_observado(
+        pokemon.hp_atual_pct, pokemon.hp_atualizado_em, agora=agora, escala=escala
+    )
+
+
 def _montar_detalhe(pokemon: PokemonInstancia) -> PokemonDetalhe:
+    agora = datetime.now(UTC)
+    escala = get_settings().expedition_time_scale
+    hp_pct = _hp_observado(pokemon, agora, escala)
+
     especie = pokemon.especie
     stats_base = StatsBase(
         hp=especie.hp_base,
@@ -75,7 +110,7 @@ def _montar_detalhe(pokemon: PokemonInstancia) -> PokemonDetalhe:
         velocidade=especie.velocidade_base,
     )
     stats = calcular_stats_efetivos(stats_base, pokemon.nivel)
-    hp_atual = hp_atual_absoluto(stats.hp, pokemon.hp_atual_pct)
+    hp_atual = hp_atual_absoluto(stats.hp, hp_pct)
 
     # Criterio 6: no nivel maximo nao ha numero de EXP que faca sentido
     # mostrar. `nivel_maximo` e o campo que deixa isso explicito; o valor de
@@ -99,6 +134,8 @@ def _montar_detalhe(pokemon: PokemonInstancia) -> PokemonDetalhe:
         nivel=pokemon.nivel,
         atribuido=pokemon.treinador_id is not None,
         treinador_id=pokemon.treinador_id,
+        hp_atual_pct=hp_pct,
+        hp_atualizado_em=pokemon.hp_atualizado_em,
         stats=StatsEfetivosLer.de_dominio(stats),
         hp_atual=hp_atual,
         hp_maximo=stats.hp,

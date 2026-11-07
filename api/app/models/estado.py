@@ -131,6 +131,12 @@ class PokemonInstancia(Base):
     nivel: Mapped[int] = mapped_column(Integer, nullable=False)
     experiencia: Mapped[int] = mapped_column(Integer, nullable=False)
     hp_atual_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    # Desde quando `hp_atual_pct` conta para a recuperacao passiva (SDD 4.8,
+    # spec 007). O despacho materializa o HP ja recuperado e carimba
+    # `started_at`; a resolucao grava o HP desgastado e carimba
+    # `resolvida_em`. Nunca lido cru por uma rota: toda leitura deriva o HP
+    # atual via `game.stats.hp_recuperado` a partir desta coluna.
+    hp_atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     # Nulo = esta no laboratorio, fora de qualquer time (invariante 2 do SDD 3.3).
     treinador_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -297,6 +303,25 @@ class Expedicao(Base):
     # proprio resultado.
     dificuldade_calculada: Mapped[float] = mapped_column(Float, nullable=False)
     poder_time_calculado: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # As especies que o laboratorio ja tinha visto NO INSTANTE DO ENVIO (achado
+    # 3 da revisao da Fase 7): lista de `especie_id`. O invariante 19 do SDD
+    # 3.3 e a regra 3 da spec 007 dizem que o relatorio e funcao apenas da
+    # semente e do ESTADO GRAVADO NO ENVIO — ler a Pokedex no instante do
+    # `claim` violava a letra disso, e pior, sem lock: tres `claim`s
+    # concorrentes do mesmo laboratorio liam a mesma Pokedex "antes de
+    # qualquer um gravar" e os tres anunciavam DESCOBERTA da mesma especie.
+    # Gravada no despacho, a leitura de `claim` vira so esta coluna.
+    especies_vistas_no_envio: Mapped[list[int]] = mapped_column(JSONB, nullable=False)
+
+    # O resumo do relatorio de campo (spec 007): tudo que a resposta de
+    # `POST /expeditions/{id}/claim` mostra alem da linha do tempo, que mora
+    # em `ExpedicaoEvento`. Gravado uma unica vez na resolucao, junto de
+    # `status` e `resolvida_em`, para que uma segunda leitura NUNCA recalcule
+    # a partir do estado atual de treinador e laboratorio — que muda a cada
+    # expedicao nova que eles completam depois desta, e faria o relatorio de
+    # uma missao antiga mentir sobre quanto ela rendeu. Nulo ate resolver.
+    relatorio_resumo: Mapped[dict | None] = mapped_column(JSONB)
 
     treinador: Mapped[Treinador] = relationship(Treinador)
     local_destino: Mapped[Local] = relationship(Local, foreign_keys=[local_destino_id])

@@ -12,7 +12,9 @@ from app.game import balance
 from app.game.erros import CurvaDesconhecida, ExperienciaInvalida, NivelInvalido
 from app.game.experience import (
     CurvaCrescimento,
+    aplicar_experiencia,
     curva_de,
+    experiencia_maxima,
     experiencia_para_o_proximo_nivel,
     experiencia_total_para_nivel,
     nivel_para_experiencia,
@@ -129,3 +131,97 @@ def test_nivel_fora_da_faixa_e_recusado(nivel):
 def test_experiencia_negativa_e_recusada():
     with pytest.raises(ExperienciaInvalida, match="negativa"):
         nivel_para_experiencia("rapida", -1)
+
+
+# --- Aplicacao do ganho (Fase 7, criterios 9, 10 e 12 da spec 007) ---------
+
+
+def _exp_de(curva, nivel):
+    return experiencia_total_para_nivel(curva, nivel)
+
+
+# curva, nivel inicial, ganho, nivel esperado, niveis ganhos esperados
+TABELA_DE_GANHO = [
+    ("media_rapida", 5, 0, 5, 0),  # ganho zero nao mexe em nada
+    ("media_rapida", 5, 90, 5, 0),  # falta 91 para o nivel 6: nao sobe
+    ("media_rapida", 5, 91, 6, 1),  # exatamente o necessario: sobe um
+    ("media_rapida", 5, 1_000, 10, 5),  # expedicao longa sobe varios de uma vez
+    ("rapida", 5, 100_000 - 100, 50, 45),
+    ("lenta", 10, 0, 10, 0),
+    ("media_lenta", 15, 1, 15, 0),
+]
+
+
+@pytest.mark.parametrize(
+    ("curva", "nivel", "ganho", "nivel_esperado", "niveis_ganhos"), TABELA_DE_GANHO
+)
+def test_aplicar_experiencia_bate_com_a_tabela(curva, nivel, ganho, nivel_esperado, niveis_ganhos):
+    resultado = aplicar_experiencia(curva, nivel, _exp_de(curva, nivel), ganho)
+
+    assert resultado.nivel_antes == nivel
+    assert resultado.nivel_depois == nivel_esperado
+    assert resultado.niveis_ganhos == niveis_ganhos
+    assert resultado.subiu is (niveis_ganhos > 0)
+
+
+def test_aplicar_experiencia_soma_o_ganho_a_experiencia_gravada():
+    inicial = _exp_de("media_rapida", 5)
+    resultado = aplicar_experiencia("media_rapida", 5, inicial, 40)
+
+    assert resultado.experiencia_depois == inicial + 40
+    assert resultado.experiencia_aplicada == 40
+
+
+@pytest.mark.parametrize("curva", list(CurvaCrescimento))
+def test_ganho_absurdo_para_no_nivel_maximo_com_a_experiencia_exata(curva):
+    # Criterio 12 da spec 007: o teto e duro e o excedente e descartado.
+    teto = _exp_de(curva, balance.NIVEL_MAXIMO)
+    resultado = aplicar_experiencia(curva, 50, _exp_de(curva, 50), 10**9)
+
+    assert resultado.nivel_depois == balance.NIVEL_MAXIMO
+    assert resultado.experiencia_depois == teto
+
+
+@pytest.mark.parametrize("curva", list(CurvaCrescimento))
+def test_no_nivel_maximo_mais_experiencia_nao_produz_evento_falso(curva):
+    teto = _exp_de(curva, balance.NIVEL_MAXIMO)
+    resultado = aplicar_experiencia(curva, balance.NIVEL_MAXIMO, teto, 500_000)
+
+    assert resultado.nivel_antes == resultado.nivel_depois == balance.NIVEL_MAXIMO
+    assert resultado.niveis_ganhos == 0
+    assert resultado.subiu is False
+    assert resultado.experiencia_depois == teto
+    assert resultado.experiencia_aplicada == 0
+
+
+def test_aplicar_experiencia_e_deterministica():
+    primeira = aplicar_experiencia("lenta", 12, _exp_de("lenta", 12), 7_777)
+    segunda = aplicar_experiencia("lenta", 12, _exp_de("lenta", 12), 7_777)
+
+    assert primeira == segunda
+
+
+def test_ganho_negativo_e_recusado():
+    with pytest.raises(ExperienciaInvalida):
+        aplicar_experiencia("rapida", 5, _exp_de("rapida", 5), -1)
+
+
+def test_experiencia_negativa_e_recusada_na_aplicacao():
+    with pytest.raises(ExperienciaInvalida):
+        aplicar_experiencia("rapida", 5, -10, 100)
+
+
+def test_nivel_fora_da_faixa_e_recusado_na_aplicacao():
+    with pytest.raises(NivelInvalido):
+        aplicar_experiencia("rapida", balance.NIVEL_MAXIMO + 1, 0, 100)
+
+
+def test_nivel_que_nao_corresponde_a_experiencia_e_recusado():
+    # Nivel 50 com a experiencia de um nivel 5: dado corrompido, nao jogada.
+    with pytest.raises(ExperienciaInvalida):
+        aplicar_experiencia("media_rapida", 50, _exp_de("media_rapida", 5), 10)
+
+
+def test_experiencia_maxima_e_o_topo_da_tabela():
+    for curva in CurvaCrescimento:
+        assert experiencia_maxima(curva) == tabela_da_curva(curva)[-1]

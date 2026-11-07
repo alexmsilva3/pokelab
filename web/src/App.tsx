@@ -5,6 +5,7 @@ import { Laboratorio } from '@/pages/Laboratorio'
 import { Login } from '@/pages/Login'
 import { Mapa } from '@/pages/Mapa'
 import { Pokedex } from '@/pages/Pokedex'
+import { RelatorioDeCampo } from '@/pages/RelatorioDeCampo'
 import { Registro } from '@/pages/Registro'
 import { Treinadores } from '@/pages/Treinadores'
 import { useSessao } from '@/store/auth'
@@ -30,6 +31,7 @@ function Rotas() {
         <Route path="/treinadores" element={<Treinadores />} />
         <Route path="/mapa" element={<Mapa />} />
         <Route path="/expedicoes" element={<Expedicoes />} />
+        <Route path="/expedicoes/:id/relatorio" element={<RelatorioDeCampo />} />
       </Route>
       <Route path="*" element={<Navigate to={sessao ? '/laboratorio' : '/login'} replace />} />
     </Routes>

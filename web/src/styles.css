@@ -802,6 +802,12 @@ button:disabled {
   margin-top: var(--espaco-4);
 }
 
+.legenda-secao {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
+}
+
 .lista-expedicoes {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -834,4 +840,154 @@ button:disabled {
 
 .contador-regressivo {
   font-variant-numeric: tabular-nums;
+}
+
+/* --- Relatorio de campo (spec 007) --------------------------------------- */
+
+.tela-relatorio {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--espaco-5);
+}
+
+.tela-relatorio section {
+  margin-top: var(--espaco-4);
+}
+
+.relatorio-resultado {
+  font-size: 1.1rem;
+  padding: var(--espaco-3);
+  border-radius: var(--raio);
+  border: 1px solid var(--cor-borda);
+  background: var(--cor-superficie);
+}
+
+.relatorio-resultado-sucesso {
+  border-color: var(--cor-sucesso);
+  color: var(--cor-sucesso);
+}
+
+.relatorio-resultado-falha {
+  border-color: var(--cor-erro);
+  color: var(--cor-erro);
+}
+
+.capturas-relatorio {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espaco-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.capturas-relatorio-item {
+  display: flex;
+  align-items: center;
+  gap: var(--espaco-2);
+  padding: var(--espaco-2) var(--espaco-3);
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+}
+
+.capturas-relatorio-nome {
+  font-weight: 600;
+}
+
+.capturas-relatorio-nivel {
+  color: var(--cor-texto-suave);
+  font-size: 0.875rem;
+}
+
+.experiencias-relatorio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-3);
+}
+
+.experiencias-relatorio-time {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-2);
+  margin: var(--espaco-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.experiencias-relatorio-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--espaco-2);
+  padding: var(--espaco-2);
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+}
+
+.experiencias-relatorio-nome {
+  font-weight: 600;
+}
+
+.experiencias-relatorio-evolucao {
+  color: var(--cor-sucesso);
+  width: 100%;
+}
+
+.itens-relatorio {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espaco-4);
+}
+
+.itens-relatorio ul {
+  list-style: none;
+  margin: var(--espaco-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-1);
+}
+
+.itens-relatorio li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--espaco-3);
+  min-width: 160px;
+}
+
+.timeline-relatorio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-2);
+  margin: var(--espaco-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-relatorio-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--espaco-2);
+  padding: var(--espaco-2) var(--espaco-3);
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+}
+
+.timeline-relatorio-minuto {
+  flex: 0 0 auto;
+  min-width: 3.5em;
+  color: var(--cor-texto-suave);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-relatorio-marcador {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.timeline-relatorio-texto {
+  flex: 1 1 auto;
 }

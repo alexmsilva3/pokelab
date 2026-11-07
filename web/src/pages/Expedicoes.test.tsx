@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expedicaoLerExemplo, respostaTreinadoresExemplo } from '@/api/fixtures'
 import type { ExpedicaoLer } from '@/api/tipos'
@@ -9,8 +9,19 @@ function respostaJson(corpo: unknown, status = 200) {
   return { ok: status < 400, status, json: async () => corpo }
 }
 
-function montarFetchMock(opcoes: { expedicoes: ExpedicaoLer[]; abortarResultado?: ExpedicaoLer }) {
-  let itensAtuais = opcoes.expedicoes
+/**
+ * A tela pede dois recortes de `GET /expeditions` (Expedicoes.tsx): ativas
+ * (`...AGUARDANDO_RELATORIO`, exclusivo desse recorte) e historico (os tres
+ * estados terminais). O mock devolve uma lista ou outra olhando a query —
+ * do mesmo jeito que o servidor real filtra por `estado_observado`.
+ */
+function montarFetchMock(opcoes: {
+  ativas: ExpedicaoLer[]
+  historico?: ExpedicaoLer[]
+  abortarResultado?: ExpedicaoLer
+}) {
+  let ativasAtuais = opcoes.ativas
+  let historicoAtual = opcoes.historico ?? []
 
   const fetchMock = vi.fn((url: unknown, init?: RequestInit) => {
     const caminho = String(url)
@@ -21,7 +32,8 @@ function montarFetchMock(opcoes: { expedicoes: ExpedicaoLer[]; abortarResultado?
       )
     }
     if (caminho.includes('/expeditions')) {
-      return Promise.resolve(respostaJson({ items: itensAtuais, total: itensAtuais.length }))
+      const itens = caminho.includes('AGUARDANDO_RELATORIO') ? ativasAtuais : historicoAtual
+      return Promise.resolve(respostaJson({ items: itens, total: itens.length }))
     }
     if (caminho.includes('/trainers')) {
       return Promise.resolve(respostaJson(respostaTreinadoresExemplo({ items: [] })))
@@ -37,8 +49,11 @@ function montarFetchMock(opcoes: { expedicoes: ExpedicaoLer[]; abortarResultado?
 
   return {
     fetchMock,
-    definirItens(itens: ExpedicaoLer[]) {
-      itensAtuais = itens
+    definirAtivas(itens: ExpedicaoLer[]) {
+      ativasAtuais = itens
+    },
+    definirHistorico(itens: ExpedicaoLer[]) {
+      historicoAtual = itens
     },
   }
 }
@@ -66,6 +81,21 @@ function renderizar() {
   )
 }
 
+/** Com a rota de destino montada, para testar o clique em "Ver relatorio" do historico. */
+function renderizarComRotaDeRelatorio() {
+  return render(
+    <MemoryRouter initialEntries={['/expedicoes']}>
+      <Routes>
+        <Route path="/expedicoes" element={<Expedicoes />} />
+        <Route
+          path="/expedicoes/:id/relatorio"
+          element={<p>Tela do relatorio aberta</p>}
+        />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
 describe('Expedicoes', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
@@ -77,7 +107,7 @@ describe('Expedicoes', () => {
   })
 
   it('lista vazia convida a despachar uma expedicao', async () => {
-    const { fetchMock } = montarFetchMock({ expedicoes: [] })
+    const { fetchMock } = montarFetchMock({ ativas: [] })
     vi.stubGlobal('fetch', fetchMock)
 
     renderizar()
@@ -96,7 +126,7 @@ describe('Expedicoes', () => {
       estado_observado: 'EM_CURSO',
       segundos_restantes: 90,
     })
-    const { fetchMock } = montarFetchMock({ expedicoes: [ativa] })
+    const { fetchMock } = montarFetchMock({ ativas: [ativa] })
     vi.stubGlobal('fetch', fetchMock)
 
     renderizar()
@@ -109,7 +139,7 @@ describe('Expedicoes', () => {
 
   it('o contador decresce com o tempo falso dentro do painel de ativas', async () => {
     const ativa = expedicaoLerExemplo({ segundos_restantes: 10, estado_observado: 'EM_CURSO' })
-    const { fetchMock } = montarFetchMock({ expedicoes: [ativa] })
+    const { fetchMock } = montarFetchMock({ ativas: [ativa] })
     vi.stubGlobal('fetch', fetchMock)
 
     renderizar()
@@ -135,7 +165,7 @@ describe('Expedicoes', () => {
       segundos_restantes: 0,
     })
 
-    const { fetchMock, definirItens } = montarFetchMock({ expedicoes: [expedicaoEmCurso] })
+    const { fetchMock, definirAtivas } = montarFetchMock({ ativas: [expedicaoEmCurso] })
     vi.stubGlobal('fetch', fetchMock)
 
     renderizar()
@@ -145,7 +175,7 @@ describe('Expedicoes', () => {
     // O servidor passa a devolver o estado terminado assim que o contador
     // local chegar a zero e a tela consultar de novo — a tela nunca declara
     // isso sozinha a partir do proprio relogio.
-    definirItens([expedicaoAguardando])
+    definirAtivas([expedicaoAguardando])
 
     await act(async () => {
       vi.advanceTimersByTime(2000)
@@ -158,14 +188,14 @@ describe('Expedicoes', () => {
   it('abortar pede confirmacao e chama o DELETE da expedicao', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const ativa = expedicaoLerExemplo({ id: 'expedicao-1', estado_observado: 'EM_CURSO' })
-    const { fetchMock, definirItens } = montarFetchMock({ expedicoes: [ativa] })
+    const { fetchMock, definirAtivas } = montarFetchMock({ ativas: [ativa] })
     vi.stubGlobal('fetch', fetchMock)
 
     renderizar()
     await esvaziarMicrotarefas()
 
     const botaoAbortar = screen.getByRole('button', { name: 'Abortar' })
-    definirItens([])
+    definirAtivas([])
     fireEvent.click(botaoAbortar)
     await esvaziarMicrotarefas()
 
@@ -173,5 +203,77 @@ describe('Expedicoes', () => {
     expect(fetchMock.mock.calls.some((chamada) => chamada[1]?.method === 'DELETE')).toBe(true)
 
     confirmSpy.mockRestore()
+  })
+
+  it('historico vazio orienta o professor', async () => {
+    const { fetchMock } = montarFetchMock({ ativas: [] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderizar()
+    await esvaziarMicrotarefas()
+
+    expect(
+      screen.getByText('Nenhuma expedicao concluida ainda. O historico aparece aqui assim que a primeira terminar.'),
+    ).toBeInTheDocument()
+  })
+
+  it('uma expedicao concluida continua visivel no historico, com caminho de volta ao relatorio', async () => {
+    const concluida = expedicaoLerExemplo({
+      id: 'expedicao-9',
+      treinador_nome: 'Misty',
+      local_destino_nome: 'Cerulean Cave',
+      status: 'CONCLUIDA_SUCESSO',
+      estado_observado: 'CONCLUIDA_SUCESSO',
+      segundos_restantes: null,
+    })
+    const { fetchMock } = montarFetchMock({ ativas: [], historico: [concluida] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderizarComRotaDeRelatorio()
+    await esvaziarMicrotarefas()
+
+    const secaoHistorico = screen.getByRole('region', { name: 'Historico de expedicoes' })
+    const cartao = within(secaoHistorico).getByRole('article', { name: /Misty/i })
+    expect(within(cartao).getByText('Destino: Cerulean Cave')).toBeInTheDocument()
+
+    fireEvent.click(within(cartao).getByRole('button', { name: 'Ver relatorio' }))
+    await esvaziarMicrotarefas()
+
+    expect(screen.getByText('Tela do relatorio aberta')).toBeInTheDocument()
+  })
+
+  it('o historico limita a quantidade mostrada e explica a regra', async () => {
+    const terminadas = Array.from({ length: 7 }, (_, indice) =>
+      expedicaoLerExemplo({
+        id: `expedicao-historico-${indice}`,
+        treinador_nome: `Treinador${indice}`,
+        status: 'CONCLUIDA_SUCESSO',
+        estado_observado: 'CONCLUIDA_SUCESSO',
+        segundos_restantes: null,
+        // Quanto maior o indice, mais recente: a mais nova e Treinador6.
+        started_at: `2026-01-0${(indice % 9) + 1}T12:00:00Z`,
+      }),
+    )
+    const { fetchMock } = montarFetchMock({ ativas: [], historico: terminadas })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderizar()
+    await esvaziarMicrotarefas()
+
+    const secaoHistorico = screen.getByRole('region', { name: 'Historico de expedicoes' })
+    expect(within(secaoHistorico).getByText('As 5 mais recentes.')).toBeInTheDocument()
+    expect(within(secaoHistorico).getAllByRole('article')).toHaveLength(5)
+    expect(within(secaoHistorico).getByRole('article', { name: /Treinador6/i })).toBeInTheDocument()
+    expect(
+      within(secaoHistorico).queryByRole('article', { name: /Treinador0$/i }),
+    ).not.toBeInTheDocument()
+
+    // Achado 1 (revisao da Fase 7): o corte precisa acontecer NA BUSCA, nao
+    // so na tela — a chamada ao historico pede um `limite` ao servidor em vez
+    // de baixar as sete expedicoes para descartar duas depois de chegarem.
+    const chamadaHistorico = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes('CONCLUIDA_SUCESSO'),
+    )
+    expect(String(chamadaHistorico?.[0])).toEqual(expect.stringContaining('limite='))
   })
 })

@@ -37,3 +37,19 @@ class HpAtualInvalido(ErroDeDominio):
 
 class StatInvalido(ErroDeDominio):
     """Um stat base ou efetivo chegou negativo."""
+
+
+class SorteioInvalido(ErroDeDominio):
+    """A tabela ponderada nao permite sorteio: vazia ou com peso total zero."""
+
+
+class CatalogoInvalido(ErroDeDominio):
+    """O catalogo de especies nao descreve uma cadeia de evolucao possivel."""
+
+
+class ItemInvalido(ErroDeDominio):
+    """Um item da mochila chegou com categoria, potencia ou quantidade impossivel."""
+
+
+class TaxaDeCapturaInvalida(ErroDeDominio):
+    """A taxa de captura ou o multiplicador de bola estao fora da faixa do seed."""

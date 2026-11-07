@@ -30,13 +30,29 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.erros import (
     ConflitoDeExpedicao,
+    ExpedicaoAbortada,
+    ExpedicaoEmCurso,
     ExpedicaoNaoEstaEmCurso,
     LocalNaoEncontrado,
     RecursoNaoEncontrado,
 )
 from app.game import balance, expedition
+from app.game import encounter as encounter_dominio
+from app.game import laboratorio as laboratorio_dominio
 from app.game import trainers as trainers_dominio
-from app.game.expedition import ItemNaCarga, LocalDaExpedicao, TreinadorParaExpedicao
+from app.game.expedition import (
+    CatalogoEmCampo,
+    ContextoDeResolucao,
+    DestinoEmCampo,
+    EspecieEmCampo,
+    ItemNaCarga,
+    LocalDaExpedicao,
+    PokemonDaExpedicao,
+    RelatorioDeCampo,
+    TreinadorEmCampo,
+    TreinadorParaExpedicao,
+)
+from app.game.itens import ItemDaMochila, categoria_de
 from app.game.mapa import (
     DestinoForaDeAlcance,
     GrafoDeLocais,
@@ -48,17 +64,31 @@ from app.game.power import PokemonNoTime
 from app.game.stats import StatsBase
 from app.game.trainers import StatusTreinador
 from app.models import Expedicao, Local, PokemonInstancia, Treinador
+from app.repositories import especies as especies_repo
 from app.repositories import expedicoes as expedicoes_repo
 from app.repositories import itens as itens_repo
+from app.repositories import laboratorios as laboratorios_repo
 from app.repositories import mapa as mapa_repo
+from app.repositories import pokedex as pokedex_repo
+from app.repositories import pokemon as pokemon_repo
 from app.repositories import treinadores as treinadores_repo
 from app.schemas.expedicoes import (
+    CapturaDoRelatorioLer,
+    EspecieVistaLer,
+    EventoDeExpedicaoLer,
+    ExpedicaoClaimLer,
     ExpedicaoLer,
+    ExpedicaoResumoLer,
+    GanhoDeExperienciaLer,
     ItemDaCargaEntrada,
     ItemDaCargaLer,
+    ItemDoRelatorioLer,
     ListaExpedicoes,
+    PokemonDoRelatorioLer,
     PreviaDespachoLer,
+    RelatorioDeCampoLer,
 )
+from app.services import relogio
 
 # --- Traducao ORM -> dominio (fronteira do Artigo I) ------------------------
 
@@ -90,10 +120,9 @@ def _local_da_expedicao(local: Local) -> LocalDaExpedicao:
     )
 
 
-def _pokemon_no_time(pokemon: PokemonInstancia) -> PokemonNoTime:
-    """`pokemon` precisa chegar com `especie` ja carregada (sem lazy load)."""
+def _stats_base_da_especie(pokemon: PokemonInstancia) -> StatsBase:
     especie = pokemon.especie
-    base = StatsBase(
+    return StatsBase(
         hp=especie.hp_base,
         ataque=especie.ataque_base,
         defesa=especie.defesa_base,
@@ -101,7 +130,48 @@ def _pokemon_no_time(pokemon: PokemonInstancia) -> PokemonNoTime:
         defesa_especial=especie.defesa_especial_base,
         velocidade=especie.velocidade_base,
     )
-    return PokemonNoTime.a_partir_dos_stats(base, pokemon.nivel, pokemon.hp_atual_pct)
+
+
+def _pokemon_no_time(pokemon: PokemonInstancia) -> PokemonNoTime:
+    """`pokemon` precisa chegar com `especie` ja carregada (sem lazy load).
+
+    Le `hp_atual_pct` CRU: so e correto chamar isto depois que o HP ja foi
+    materializado (despacho) ou quando o Pokemon esta em campo, onde o
+    invariante 18 ja garante que o valor gravado e o observado (a enfermaria
+    nao anda durante a expedicao).
+    """
+    return PokemonNoTime.a_partir_dos_stats(
+        _stats_base_da_especie(pokemon), pokemon.nivel, pokemon.hp_atual_pct
+    )
+
+
+def _pokemon_no_time_observado(
+    pokemon: PokemonInstancia, *, agora: datetime, escala: float
+) -> PokemonNoTime:
+    """Como `_pokemon_no_time`, mas com o HP OBSERVADO agora, sem gravar nada.
+
+    Usada pela previa (`prever`), que nunca escreve: mostrar o poder com o HP
+    cru subestimaria um time que ja recuperou boa parte do dano no
+    laboratorio.
+    """
+    pct = relogio.hp_observado(
+        pokemon.hp_atual_pct, pokemon.hp_atualizado_em, agora=agora, escala=escala
+    )
+    return PokemonNoTime.a_partir_dos_stats(_stats_base_da_especie(pokemon), pokemon.nivel, pct)
+
+
+def _materializar_hp(pokemon: PokemonInstancia, *, agora: datetime, escala: float) -> None:
+    """Grava o HP ja recuperado e carimba `agora` (tarefa 12, SDD 4.8).
+
+    Chamada no despacho, antes de montar o time para `calcular_despacho`: a
+    partir daqui a enfermaria para (invariante 18), e o desgaste da expedicao
+    incide sobre este valor, nao sobre o que o banco teria em outro instante —
+    e isso que mantem a resolucao futura funcao so da semente e do envio.
+    """
+    pokemon.hp_atual_pct = relogio.hp_observado(
+        pokemon.hp_atual_pct, pokemon.hp_atualizado_em, agora=agora, escala=escala
+    )
+    pokemon.hp_atualizado_em = agora
 
 
 def _treinador_para_expedicao(treinador: Treinador) -> TreinadorParaExpedicao:
@@ -161,8 +231,8 @@ def _itens_desconhecidos(
 # --- Leitura (criterios 9 a 11 e 13) -----------------------------------------
 
 
-def _montar_expedicao_ler(expedicao: Expedicao, agora: datetime) -> ExpedicaoLer:
-    """A unica funcao que traduz uma `Expedicao` para a ficha que a API devolve.
+def _campos_comuns_ler(expedicao: Expedicao, agora: datetime) -> dict:
+    """Os campos que `ExpedicaoResumoLer` e `ExpedicaoLer` compartilham.
 
     `estado_observado` e `segundos_restantes` vem de `game.expedition`, a
     unica fonte dessas duas respostas (plan.md): dois lugares derivando por
@@ -174,25 +244,25 @@ def _montar_expedicao_ler(expedicao: Expedicao, agora: datetime) -> ExpedicaoLer
     # expedicao abortada respondia com o prazo de uma viagem que nao vai mais
     # acontecer. Nulo diz "nao se aplica"; zero diria "acabou agora".
     restante = None if estado.terminal else expedition.tempo_restante(expedicao.eta, agora)
-    return ExpedicaoLer(
-        id=expedicao.id,
-        treinador_id=expedicao.treinador_id,
-        treinador_nome=expedicao.treinador.nome,
-        local_destino_id=expedicao.local_destino_id,
-        local_destino_nome=expedicao.local_destino.nome,
-        local_origem_id=expedicao.local_origem_id,
-        local_origem_nome=expedicao.local_origem.nome,
-        status=expedicao.status,
-        estado_observado=estado.value,
-        seed=expedicao.seed,
-        started_at=expedicao.started_at,
-        eta=expedicao.eta,
-        resolvida_em=expedicao.resolvida_em,
-        duracao_minutos=expedicao.duracao_minutos,
-        dificuldade_calculada=expedicao.dificuldade_calculada,
-        poder_time_calculado=expedicao.poder_time_calculado,
-        segundos_restantes=restante,
-        carga=[
+    return {
+        "id": expedicao.id,
+        "treinador_id": expedicao.treinador_id,
+        "treinador_nome": expedicao.treinador.nome,
+        "local_destino_id": expedicao.local_destino_id,
+        "local_destino_nome": expedicao.local_destino.nome,
+        "local_origem_id": expedicao.local_origem_id,
+        "local_origem_nome": expedicao.local_origem.nome,
+        "status": expedicao.status,
+        "estado_observado": estado.value,
+        "seed": expedicao.seed,
+        "started_at": expedicao.started_at,
+        "eta": expedicao.eta,
+        "resolvida_em": expedicao.resolvida_em,
+        "duracao_minutos": expedicao.duracao_minutos,
+        "dificuldade_calculada": expedicao.dificuldade_calculada,
+        "poder_time_calculado": expedicao.poder_time_calculado,
+        "segundos_restantes": restante,
+        "carga": [
             ItemDaCargaLer(
                 item_id=item.item_id,
                 nome=item.item.nome,
@@ -201,25 +271,60 @@ def _montar_expedicao_ler(expedicao: Expedicao, agora: datetime) -> ExpedicaoLer
             )
             for item in expedicao.itens
         ],
+    }
+
+
+def _montar_expedicao_resumo(expedicao: Expedicao, agora: datetime) -> ExpedicaoResumoLer:
+    """A linha de `GET /expeditions` (revisao da Fase 7, achado 1): sem relatorio.
+
+    Usada so pela listagem. Nunca chama `_montar_relatorio_ler`: o ponto desta
+    funcao e justamente nao pagar o custo de montar a linha do tempo inteira
+    de cada expedicao so para o painel mostrar um cartao.
+    """
+    return ExpedicaoResumoLer(**_campos_comuns_ler(expedicao, agora))
+
+
+def _montar_expedicao_ler(expedicao: Expedicao, agora: datetime) -> ExpedicaoLer:
+    """A ficha completa que `GET /expeditions/{id}` e o `claim` devolvem.
+
+    A unica diferenca para `_montar_expedicao_resumo` e o relatorio: aqui,
+    sim, vale a pena montar a linha do tempo inteira, porque e exatamente o
+    que o professor pediu ao abrir esta expedicao especifica.
+    """
+    return ExpedicaoLer(
+        **_campos_comuns_ler(expedicao, agora),
+        relatorio=_montar_relatorio_ler(expedicao),
     )
 
 
-def listar(sessao: Session, laboratorio_id: uuid.UUID, status: str | None) -> ListaExpedicoes:
-    """Ativas e historico, com o `estado_observado` de cada uma calculado agora.
+def listar(
+    sessao: Session,
+    laboratorio_id: uuid.UUID,
+    status: str | None,
+    limite: int = expedicoes_repo.LIMITE_PADRAO,
+) -> ListaExpedicoes:
+    """As `limite` expedicoes mais recentes do laboratorio, sem relatorio.
 
-    O filtro compara contra o estado OBSERVADO, nao contra a coluna gravada:
-    e assim que uma expedicao `EM_CURSO` cujo `eta` ja passou sai da lista de
-    "em curso" e entra na de "aguardando relatorio" sem que nenhuma escrita
-    tenha acontecido no banco.
+    O filtro de `status` compara contra o estado OBSERVADO, nao contra a
+    coluna gravada: e assim que uma expedicao `EM_CURSO` cujo `eta` ja passou
+    sai da lista de "em curso" e entra na de "aguardando relatorio" sem que
+    nenhuma escrita tenha acontecido no banco.
 
     Aceita VARIOS estados justamente por isso. O painel de ativas quer ver
     "em curso OU aguardando relatorio", e pedindo so `EM_CURSO` a expedicao
     sumia da tela no instante em que terminava — o momento em que o professor
     mais quer olhar para ela.
+
+    `limite` corta a consulta no banco (revisao da Fase 7, achado 1), nao a
+    lista depois de filtrar: o filtro de `status` incide sobre as `limite`
+    mais recentes, nao sobre o historico inteiro do laboratorio. Isso casa com
+    o uso real — o painel de ativas tem poucas linhas (nunca mais que o
+    tamanho do corpo de treinadores) e sempre cabe dentro do teto padrao; o
+    historico aceita um `limite` maior quando o professor pedir.
     """
     agora = datetime.now(UTC)
-    expedicoes = expedicoes_repo.listar(sessao, laboratorio_id)
-    linhas = [_montar_expedicao_ler(expedicao, agora) for expedicao in expedicoes]
+    expedicoes = expedicoes_repo.listar(sessao, laboratorio_id, limite)
+    linhas = [_montar_expedicao_resumo(expedicao, agora) for expedicao in expedicoes]
     if status:
         procurados = set(status)
         linhas = [linha for linha in linhas if linha.estado_observado in procurados]
@@ -258,10 +363,21 @@ def despachar(
     grafo, _locais_por_id, destino = _destino_valido(sessao, local_id)
     visitados = mapa_repo.listar_visitados(sessao, laboratorio_id)
     item_ids, catalogo = _itens_desconhecidos(sessao, carga_pedida)
+    # Retrato da Pokedex NO ENVIO (achado 3 da revisao da Fase 7): gravado na
+    # expedicao abaixo, para que a resolucao nunca precise ler a Pokedex ao
+    # vivo no `claim` (invariante 19, SDD 3.3).
+    especies_vistas_no_envio = pokedex_repo.buscar_vistas(sessao, laboratorio_id)
 
     treinador = treinadores_repo.travar_treinador_com_time(sessao, laboratorio_id, treinador_id)
     if treinador is None:
         raise RecursoNaoEncontrado()
+
+    # Tarefa 12 (spec 007): materializa o HP ja recuperado e para o relogio
+    # da enfermaria para este time, ANTES de calcular o poder — o desgaste da
+    # resolucao futura vai incidir sobre este valor, nunca sobre o que o
+    # banco teria num instante diferente (invariante 18, Artigo III).
+    for pokemon in treinador.time:
+        _materializar_hp(pokemon, agora=agora, escala=escala)
 
     quantidades = itens_repo.travar_quantidades(sessao, laboratorio_id, item_ids)
     carga = _carga_para_expedicao(
@@ -307,7 +423,12 @@ def despachar(
             )
 
     treinadores_repo.atualizar_status(treinador, StatusTreinador.EM_EXPEDICAO)
-    expedicao = expedicoes_repo.criar(sessao, laboratorio_id=laboratorio_id, despacho=despacho)
+    expedicao = expedicoes_repo.criar(
+        sessao,
+        laboratorio_id=laboratorio_id,
+        despacho=despacho,
+        especies_vistas_no_envio=especies_vistas_no_envio,
+    )
     sessao.commit()
 
     atualizada = expedicoes_repo.buscar_detalhe(sessao, laboratorio_id, expedicao.id)
@@ -353,7 +474,10 @@ def prever(
     # aleatoriedade que ninguem vai usar.
     previa = expedition.prever_despacho(
         treinador=_treinador_para_expedicao(treinador),
-        time=[_pokemon_no_time(pokemon) for pokemon in treinador.time],
+        time=[
+            _pokemon_no_time_observado(pokemon, agora=agora, escala=escala)
+            for pokemon in treinador.time
+        ],
         grafo=grafo,
         visitados=visitados,
         destino=destino,
@@ -389,6 +513,18 @@ def abortar(sessao: Session, laboratorio_id: uuid.UUID, expedicao_id: uuid.UUID)
     de a Fase 7 gerar relatorio e recompensa dela. A spec fala em abortar uma
     expedicao "em andamento", e isto deixou de ser andamento (decisao
     registrada em `ExpedicaoNaoEstaEmCurso`).
+
+    Carimba `hp_atualizado_em = agora` em cada Pokemon do time que volta
+    (achado 2 da revisao da Fase 7): sem isso, o carimbo continuava sendo o
+    instante da PARTIDA, gravado por `_materializar_hp` no despacho. Como a
+    recuperacao passiva fica suspensa so enquanto o treinador esta
+    `EM_EXPEDICAO` (invariante 18), o instante em que ele volta a
+    `DISPONIVEL` e o instante em que o relogio da enfermaria passa a contar —
+    e se o marco continuasse no passado, a primeira leitura seguinte creditaria
+    de uma vez todo o tempo que o time passou em campo, como se tivesse
+    passado parado no laboratorio o tempo todo. O HP gravado (`hp_atual_pct`)
+    nao muda aqui, so o marco — exatamente o papel que `_gravar_resultado` da
+    a `resolvida_em` do lado do sucesso.
     """
     agora = datetime.now(UTC)
     expedicao = expedicoes_repo.travar_para_abortar(sessao, laboratorio_id, expedicao_id)
@@ -405,6 +541,13 @@ def abortar(sessao: Session, laboratorio_id: uuid.UUID, expedicao_id: uuid.UUID)
     treinador = treinadores_repo.travar_treinador(sessao, laboratorio_id, expedicao.treinador_id)
     if treinador is not None:
         treinadores_repo.atualizar_status(treinador, StatusTreinador.DISPONIVEL)
+        # Trava os Pokemon do time (pedido vazio: `travar_pokemon_envolvidos`
+        # ja inclui quem esta com `treinador_id == treinador.id`) para
+        # recarimbar o marco da enfermaria sob a mesma transacao que libera o
+        # treinador.
+        time = treinadores_repo.travar_pokemon_envolvidos(sessao, laboratorio_id, treinador.id, ())
+        for pokemon in time:
+            pokemon.hp_atualizado_em = agora
 
     sessao.commit()
 
@@ -412,3 +555,394 @@ def abortar(sessao: Session, laboratorio_id: uuid.UUID, expedicao_id: uuid.UUID)
     if atualizada is None:  # pragma: no cover - impossivel, acabamos de gravar
         raise RecursoNaoEncontrado()
     return _montar_expedicao_ler(atualizada, datetime.now(UTC))
+
+
+# --- Relatorio de campo (spec 007, ADR-006) ----------------------------------
+#
+# `claim` e o coracao da fase: ele abre a UNICA transacao em que a expedicao
+# e resolvida, trava a linha, monta o `ContextoDeResolucao`, chama
+# `expedition.resolver` e grava tudo que voltou. O servico nao decide NADA de
+# jogo aqui — todo `if` sobre regra pertence a `game/`, e o que resta e
+# buscar estado, montar o retrato imutavel que o dominio pede, e persistir o
+# resultado exatamente como ele saiu.
+
+
+def _especie_em_campo(especie) -> EspecieEmCampo:
+    return EspecieEmCampo.a_partir_dos_stats(
+        id=especie.id,
+        nome=especie.nome,
+        experiencia_base=especie.experiencia_base,
+        taxa_captura=especie.taxa_captura,
+        curva_crescimento=especie.curva_crescimento,
+        stats_base=StatsBase(
+            hp=especie.hp_base,
+            ataque=especie.ataque_base,
+            defesa=especie.defesa_base,
+            ataque_especial=especie.ataque_especial_base,
+            defesa_especial=especie.defesa_especial_base,
+            velocidade=especie.velocidade_base,
+        ),
+        evolui_para_id=especie.evolui_para_id,
+        evolui_em_nivel=especie.evolui_em_nivel,
+    )
+
+
+def _montar_catalogo(
+    sessao: Session, time: Sequence[PokemonInstancia], linhas_raw: Sequence
+) -> CatalogoEmCampo:
+    """O catalogo COMPLETO que `ContextoDeResolucao` exige: toda especie do
+    time, toda especie da tabela de encontros e toda a cadeia de evolucao
+    delas (nao-negociavel: um catalogo parcial e recusado na construcao)."""
+    ids = {pokemon.especie_id for pokemon in time} | {linha.especie_id for linha in linhas_raw}
+    especies = especies_repo.buscar_catalogo(sessao, ids)
+    return {especie_id: _especie_em_campo(especie) for especie_id, especie in especies.items()}
+
+
+def _montar_contexto(
+    sessao: Session, expedicao: Expedicao, treinador: Treinador
+) -> ContextoDeResolucao:
+    linhas_raw = mapa_repo.buscar_linhas_de_encontro(sessao, expedicao.local_destino_id)
+    catalogo = _montar_catalogo(sessao, treinador.time, linhas_raw)
+
+    time = tuple(
+        PokemonDaExpedicao(
+            id=pokemon.id,
+            especie_id=pokemon.especie_id,
+            nivel=pokemon.nivel,
+            experiencia=pokemon.experiencia,
+            hp_atual_pct=pokemon.hp_atual_pct,
+        )
+        for pokemon in treinador.time
+    )
+    # `buscar_linhas_de_encontro` ja devolve em ordem canonica (especie_id
+    # crescente); `ordenar_linhas` so entraria em cena para uma fonte sem
+    # essa garantia, que nao e o caso de uma consulta com `ORDER BY`.
+    linhas = tuple(
+        encounter_dominio.LinhaDeEncontro(
+            especie_id=linha.especie_id,
+            peso=linha.peso,
+            nivel_min=linha.nivel_min,
+            nivel_max=linha.nivel_max,
+        )
+        for linha in linhas_raw
+    )
+    destino = DestinoEmCampo(
+        local=_local_da_expedicao(expedicao.local_destino),
+        nome=expedicao.local_destino.nome,
+        encontros_base=expedicao.local_destino.encontros_base,
+        linhas_de_encontro=linhas,
+    )
+    # Primeira resolucao desta expedicao (o estado so chega aqui vindo de
+    # AGUARDANDO_RELATORIO): `quantidade_consumida` ainda e zero, entao o que
+    # resta na carga e exatamente o que foi levado.
+    carga = tuple(
+        ItemDaMochila(
+            item_id=item.item_id,
+            nome=item.item.nome,
+            categoria=categoria_de(item.item.categoria),
+            potencia=item.item.potencia,
+            quantidade=item.quantidade_levada - item.quantidade_consumida,
+        )
+        for item in expedicao.itens
+    )
+    # Retrato do ENVIO, nunca uma leitura ao vivo (achado 3 da revisao da Fase
+    # 7, invariante 19): ler a Pokedex aqui, no `claim`, era o bug — fora de
+    # qualquer lock, dois `claim`s concorrentes do mesmo laboratorio liam a
+    # mesma Pokedex "antes de qualquer um gravar" e os dois anunciavam
+    # DESCOBERTA da mesma especie. `especies_vistas_no_envio` foi gravada por
+    # `despachar()` no instante do despacho e nunca muda depois.
+    especies_vistas = set(expedicao.especies_vistas_no_envio)
+
+    ids_para_nome = {item_id for item_id, _ in balance.TABELA_DE_ACHADOS} | {
+        item.item_id for item in expedicao.itens
+    }
+    nomes_de_itens = {
+        item_id: item.nome
+        for item_id, item in itens_repo.buscar_itens_referencia(
+            sessao, tuple(ids_para_nome)
+        ).items()
+    }
+
+    return ContextoDeResolucao(
+        treinador=TreinadorEmCampo(id=treinador.id, nome=treinador.nome, nivel=treinador.nivel),
+        time=time,
+        destino=destino,
+        origem_nome=expedicao.local_origem.nome,
+        catalogo=catalogo,
+        carga=carga,
+        especies_vistas=frozenset(especies_vistas),
+        nomes_de_itens=nomes_de_itens,
+        duracao_minutos=expedicao.duracao_minutos,
+    )
+
+
+def _item_resumo(item) -> dict:
+    return {"item_id": item.item_id, "nome": item.nome, "quantidade": item.quantidade}
+
+
+def _montar_resumo(
+    relatorio: RelatorioDeCampo,
+    *,
+    capturas_pokemon_ids: Sequence[uuid.UUID],
+    treinador_nivel_antes: int,
+    treinador_nivel_depois: int,
+    laboratorio_nivel_antes: int,
+    laboratorio_nivel_depois: int,
+    local_desbloqueado: bool,
+) -> dict:
+    """Tudo que o relatorio mostra ALEM da linha do tempo (que mora em
+    `expedicao_eventos`). Gravado uma vez em `relatorio_resumo` e so lido
+    depois — nunca recalculado — porque treinador e laboratorio continuam
+    ganhando experiencia em expedicoes futuras, e o relatorio desta precisa
+    continuar dizendo o que ELA rendeu, nao o estado atual dos dois.
+    """
+    return {
+        "encontros": relatorio.encontros,
+        "vitorias": relatorio.vitorias,
+        "derrotas": relatorio.derrotas,
+        "local_desbloqueado": local_desbloqueado,
+        "capturas": [
+            {
+                "especie_id": captura.especie_id,
+                "especie_nome": captura.especie_nome,
+                "nivel": captura.nivel,
+                "pokemon_id": str(pokemon_id),
+            }
+            for captura, pokemon_id in zip(relatorio.capturas, capturas_pokemon_ids, strict=True)
+        ],
+        "time": [
+            {
+                "pokemon_id": str(membro.pokemon_id),
+                "especie_id": membro.especie_id,
+                "especie_nome": membro.especie_nome,
+                "nivel_antes": membro.nivel_antes,
+                "nivel_depois": membro.nivel_depois,
+                "exp_ganha": membro.experiencia_ganha,
+                "hp_antes_pct": membro.hp_antes_pct,
+                "hp_depois_pct": membro.hp_depois_pct,
+                "evoluiu_para_id": membro.evoluiu_para_id,
+                "evoluiu_para_nome": membro.evoluiu_para_nome,
+            }
+            for membro in relatorio.time
+        ],
+        "treinador": {
+            "nivel_antes": treinador_nivel_antes,
+            "nivel_depois": treinador_nivel_depois,
+            "exp_ganha": relatorio.experiencia_treinador,
+        },
+        "laboratorio": {
+            "nivel_antes": laboratorio_nivel_antes,
+            "nivel_depois": laboratorio_nivel_depois,
+            "exp_ganha": relatorio.experiencia_laboratorio,
+        },
+        "itens_consumidos": [_item_resumo(item) for item in relatorio.itens_consumidos],
+        "itens_encontrados": [_item_resumo(item) for item in relatorio.itens_encontrados],
+        "especies_vistas": [
+            {"especie_id": av.especie_id, "nome": av.especie_nome, "primeira_vez": av.primeira_vez}
+            for av in relatorio.avistamentos
+        ],
+    }
+
+
+def _gravar_resultado(
+    sessao: Session,
+    expedicao: Expedicao,
+    treinador: Treinador,
+    relatorio: RelatorioDeCampo,
+    *,
+    agora: datetime,
+) -> None:
+    """Grava exatamente o que `relatorio` trouxe, tudo na transacao do `claim` (regra 14)."""
+    expedicoes_repo.gravar_eventos(sessao, expedicao.id, relatorio.eventos)
+    expedicoes_repo.atualizar_consumo_itens(sessao, expedicao.id, relatorio.itens_consumidos)
+
+    for item in relatorio.itens_encontrados:
+        itens_repo.creditar(sessao, expedicao.laboratorio_id, item.item_id, item.quantidade)
+
+    pokemon_por_id = {pokemon.id: pokemon for pokemon in treinador.time}
+    for membro in relatorio.time:
+        pokemon_repo.atualizar_apos_expedicao(
+            pokemon_por_id[membro.pokemon_id],
+            nivel=membro.nivel_depois,
+            experiencia=membro.experiencia_depois,
+            especie_id=membro.especie_final_id,
+            hp_atual_pct=membro.hp_depois_pct,
+            hp_atualizado_em=agora,
+        )
+
+    capturas_pokemon_ids: list[uuid.UUID] = []
+    for captura in relatorio.capturas:
+        novo_id = uuid.uuid4()
+        capturas_pokemon_ids.append(novo_id)
+        pokemon_repo.criar_capturado(
+            sessao,
+            id=novo_id,
+            laboratorio_id=expedicao.laboratorio_id,
+            especie_id=captura.especie_id,
+            nivel=captura.nivel,
+            experiencia=captura.experiencia,
+            hp_atual_pct=captura.hp_atual_pct,
+            local_captura_id=expedicao.local_destino_id,
+            capturado_em=agora,
+        )
+
+    especies_capturadas = {captura.especie_id for captura in relatorio.capturas}
+    pokedex_repo.registrar_avistamentos(
+        sessao,
+        expedicao.laboratorio_id,
+        expedicao.local_destino_id,
+        relatorio.avistamentos,
+        especies_capturadas,
+        agora,
+    )
+
+    local_desbloqueado = False
+    if relatorio.desbloqueia_destino:
+        local_desbloqueado = mapa_repo.desbloquear(
+            sessao, expedicao.laboratorio_id, expedicao.local_destino_id, agora
+        )
+
+    nivel_treinador_antes = treinador.nivel
+    experiencia_treinador = treinador.experiencia + relatorio.experiencia_treinador
+    nivel_treinador_depois = trainers_dominio.nivel_para_experiencia(experiencia_treinador)
+    treinadores_repo.concluir_expedicao(
+        treinador, nivel=nivel_treinador_depois, experiencia=experiencia_treinador
+    )
+
+    laboratorio = laboratorios_repo.travar(sessao, expedicao.laboratorio_id)
+    if laboratorio is None:  # pragma: no cover - FK garante a existencia
+        raise RecursoNaoEncontrado()
+    nivel_laboratorio_antes = laboratorio.nivel
+    nivel_laboratorio_depois = laboratorio.nivel
+    if relatorio.sucesso and relatorio.experiencia_laboratorio:
+        experiencia_laboratorio = laboratorio.experiencia + relatorio.experiencia_laboratorio
+        nivel_laboratorio_depois = laboratorio_dominio.nivel_para_experiencia(
+            experiencia_laboratorio
+        )
+        laboratorios_repo.atualizar_progressao(
+            laboratorio, nivel=nivel_laboratorio_depois, experiencia=experiencia_laboratorio
+        )
+
+    resumo = _montar_resumo(
+        relatorio,
+        capturas_pokemon_ids=capturas_pokemon_ids,
+        treinador_nivel_antes=nivel_treinador_antes,
+        treinador_nivel_depois=nivel_treinador_depois,
+        laboratorio_nivel_antes=nivel_laboratorio_antes,
+        laboratorio_nivel_depois=nivel_laboratorio_depois,
+        local_desbloqueado=local_desbloqueado,
+    )
+    expedicoes_repo.marcar_resolvida(
+        expedicao, status=relatorio.status.value, resolvida_em=agora, resumo=resumo
+    )
+
+
+def _montar_relatorio_ler(expedicao: Expedicao) -> RelatorioDeCampoLer | None:
+    """Reconstroi o relatorio do que ja esta GRAVADO — nunca reexecuta `resolver`.
+
+    Reexecutar daria o mesmo resultado hoje e um resultado diferente no dia em
+    que uma constante de `balance.py` mudar (ADR-006): o relatorio gravado e a
+    verdade, e e por isso que ele le `relatorio_resumo` e os eventos, nunca o
+    estado atual de treinador, laboratorio ou pokemon_instancias.
+    """
+    if expedicao.resolvida_em is None or expedicao.relatorio_resumo is None:
+        return None
+    resumo = expedicao.relatorio_resumo
+    eventos = sorted(expedicao.eventos, key=lambda evento: evento.ordem)
+    return RelatorioDeCampoLer(
+        status=expedicao.status,
+        resolvida_em=expedicao.resolvida_em,
+        encontros=resumo["encontros"],
+        vitorias=resumo["vitorias"],
+        derrotas=resumo["derrotas"],
+        local_desbloqueado=resumo["local_desbloqueado"],
+        eventos=[
+            EventoDeExpedicaoLer(
+                ordem=evento.ordem,
+                tipo=evento.tipo,
+                texto=evento.texto,
+                ocorrido_em_minuto=evento.ocorrido_em_minuto,
+                payload=evento.payload,
+            )
+            for evento in eventos
+        ],
+        capturas=[CapturaDoRelatorioLer(**item) for item in resumo["capturas"]],
+        time=[PokemonDoRelatorioLer(**item) for item in resumo["time"]],
+        treinador=GanhoDeExperienciaLer(**resumo["treinador"]),
+        laboratorio=GanhoDeExperienciaLer(**resumo["laboratorio"]),
+        itens_consumidos=[ItemDoRelatorioLer(**item) for item in resumo["itens_consumidos"]],
+        itens_encontrados=[ItemDoRelatorioLer(**item) for item in resumo["itens_encontrados"]],
+        especies_vistas=[EspecieVistaLer(**item) for item in resumo["especies_vistas"]],
+    )
+
+
+def _resposta_do_claim(
+    sessao: Session, laboratorio_id: uuid.UUID, expedicao_id: uuid.UUID, agora: datetime
+) -> ExpedicaoClaimLer:
+    atualizada = expedicoes_repo.buscar_detalhe(sessao, laboratorio_id, expedicao_id)
+    if atualizada is None:  # pragma: no cover - impossivel, acabamos de gravar ou de ler
+        raise RecursoNaoEncontrado()
+    relatorio_ler = _montar_relatorio_ler(atualizada)
+    if relatorio_ler is None:  # pragma: no cover - so chega aqui ja resolvida
+        raise RecursoNaoEncontrado()
+    return ExpedicaoClaimLer(
+        expedicao=_montar_expedicao_ler(atualizada, agora), relatorio=relatorio_ler
+    )
+
+
+def claim(sessao: Session, laboratorio_id: uuid.UUID, expedicao_id: uuid.UUID) -> ExpedicaoClaimLer:
+    """`POST /expeditions/{id}/claim` (ADR-006): o coracao da Fase 7.
+
+    Transacao unica, na ordem exigida pelo plano:
+
+      1. `SELECT ... FOR UPDATE` na expedicao.
+      2. Ja concluida (sucesso ou falha): devolve o relatorio GRAVADO, sem
+         escrever nada (idempotencia, criterios 4 e 5).
+      3. Prazo nao vencido: recusa com `EXPEDICAO_EM_CURSO`.
+      4. Abortada: recusa com `EXPEDICAO_ABORTADA`.
+      5. Senao (aguardando relatorio): resolve, grava tudo, devolve.
+
+    O status terminal e checado ANTES do prazo e do aborto, e nao na ordem
+    literal "coluna != EM_CURSO -> devolve": uma expedicao abortada ANTES do
+    `eta` original (abortar so e permitido enquanto ainda EM_CURSO) teria
+    `agora < eta` verdadeiro, e checar o prazo primeiro devolveria
+    `EXPEDICAO_EM_CURSO` para uma missao que ja foi cancelada — o professor
+    levaria um erro que nao descreve o que aconteceu.
+    """
+    agora = datetime.now(UTC)
+
+    expedicao = expedicoes_repo.travar_para_resolver(sessao, laboratorio_id, expedicao_id)
+    if expedicao is None:
+        raise RecursoNaoEncontrado()
+
+    status = expedition.status_de_expedicao(expedicao.status)
+
+    if status in (
+        expedition.StatusExpedicao.CONCLUIDA_SUCESSO,
+        expedition.StatusExpedicao.CONCLUIDA_FALHA,
+    ):
+        sessao.rollback()
+        return _resposta_do_claim(sessao, laboratorio_id, expedicao_id, agora)
+
+    if status is expedition.StatusExpedicao.ABORTADA:
+        sessao.rollback()
+        raise ExpedicaoAbortada()
+
+    if agora < expedicao.eta:
+        sessao.rollback()
+        raise ExpedicaoEmCurso()
+
+    # So resta `EM_CURSO` com o `eta` ja vencido: AGUARDANDO_RELATORIO.
+    treinador = treinadores_repo.travar_treinador_com_time(
+        sessao, laboratorio_id, expedicao.treinador_id
+    )
+    if treinador is None:  # pragma: no cover - FK garante a existencia
+        raise RecursoNaoEncontrado()
+
+    contexto = _montar_contexto(sessao, expedicao, treinador)
+    relatorio = expedition.resolver(contexto, random.Random(expedicao.seed))
+
+    _gravar_resultado(sessao, expedicao, treinador, relatorio, agora=agora)
+    sessao.commit()
+
+    return _resposta_do_claim(sessao, laboratorio_id, expedicao_id, agora)

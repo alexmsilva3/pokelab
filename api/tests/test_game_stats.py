@@ -10,7 +10,13 @@ import pytest
 
 from app.game import balance
 from app.game.erros import HpAtualInvalido, NivelInvalido, StatInvalido
-from app.game.stats import StatsBase, StatsEfetivos, calcular_stats_efetivos, hp_atual_absoluto
+from app.game.stats import (
+    StatsBase,
+    StatsEfetivos,
+    calcular_stats_efetivos,
+    hp_atual_absoluto,
+    hp_recuperado,
+)
 
 BULBASAUR = StatsBase(
     hp=45,
@@ -203,3 +209,64 @@ def test_porcentagem_negativa_e_recusada():
 def test_hp_efetivo_negativo_e_recusado():
     with pytest.raises(StatInvalido):
         hp_atual_absoluto(-1, 50)
+
+
+# --- Recuperacao passiva (SDD 4.8, criterios 20 e 21 da spec 007) ----------
+
+# hp inicial, minutos decorridos, hp esperado
+# Com MINUTOS_POR_PONTO_DE_HP = 2: um ponto a cada dois minutos de jogo.
+TABELA_DE_RECUPERACAO = [
+    (70, 0, 70),  # zero minuto nao muda nada
+    (70, 1, 70),  # fracao de ponto nao conta: a divisao inteira trunca
+    (70, 2, 71),
+    (70, 20, 80),
+    (70, 59, 99),
+    (70, 60, 100),
+    (70, 10_000, 100),  # teto em 100
+    (0, 200, 100),  # nocauteado recupera igual (questao 8 do SDD)
+    (0, 2, 1),
+    (100, 500, 100),
+]
+
+
+@pytest.mark.parametrize(("inicial", "minutos", "esperado"), TABELA_DE_RECUPERACAO)
+def test_tabela_de_recuperacao_passiva(inicial, minutos, esperado):
+    assert hp_recuperado(inicial, minutos) == esperado
+
+
+def test_minuto_negativo_nao_reduz_o_hp():
+    # Relogio do servidor que anda para tras, ou carimbo no futuro: o piso em
+    # zero le isso como "ainda nao passou tempo nenhum".
+    assert hp_recuperado(40, -1) == 40
+    assert hp_recuperado(40, -100_000) == 40
+
+
+def test_recuperacao_nunca_passa_do_teto_nem_cai():
+    for inicial in range(0, balance.BASE_PERCENTUAL + 1):
+        for minutos in (-5, 0, 1, 7, 240):
+            recuperado = hp_recuperado(inicial, minutos)
+            assert inicial <= recuperado <= balance.BASE_PERCENTUAL
+
+
+def test_recuperacao_e_monotona_no_tempo():
+    valores = [hp_recuperado(30, minutos) for minutos in range(0, 300)]
+
+    assert valores == sorted(valores)
+
+
+def test_do_zero_ao_cheio_leva_o_que_o_balance_promete():
+    minutos = balance.BASE_PERCENTUAL * balance.MINUTOS_POR_PONTO_DE_HP
+
+    assert hp_recuperado(0, minutos) == balance.BASE_PERCENTUAL
+    assert hp_recuperado(0, minutos - 1) < balance.BASE_PERCENTUAL
+
+
+def test_recuperacao_e_deterministica():
+    assert hp_recuperado(37, 95) == hp_recuperado(37, 95)
+
+
+def test_porcentagem_invalida_e_recusada_na_recuperacao():
+    with pytest.raises(HpAtualInvalido):
+        hp_recuperado(balance.BASE_PERCENTUAL + 1, 10)
+    with pytest.raises(HpAtualInvalido):
+        hp_recuperado(-1, 10)
