@@ -15,9 +15,11 @@ describe('BarraDeExperiencia', () => {
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '40')
   })
 
-  it('mostra os numeros exatos junto da barra', () => {
-    // A barra da a nocao; o texto da a conta. Quem planeja a proxima expedicao
-    // precisa do numero, nao so da sensacao.
+  it('o numero exato chega a leitor de tela sem depender de hover', () => {
+    // O texto so aparece visualmente ao passar o mouse ou focar o trilho. Para
+    // leitor de tela ele nunca esta escondido: esconder o numero de quem nao ve
+    // a barra seria esconder a informacao inteira. Por isso vai em
+    // `aria-valuetext`, que e o que o leitor anuncia no lugar da porcentagem.
     const detalhe = pokemonDetalheExemplo({
       nivel: 7,
       experiencia_vencida_no_nivel: 40,
@@ -27,8 +29,18 @@ describe('BarraDeExperiencia', () => {
 
     render(<BarraDeExperiencia detalhe={detalhe} />)
 
-    expect(screen.getByText(/40 de 100 para o nivel 8/)).toBeInTheDocument()
-    expect(screen.getByText(/Faltam 60/)).toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'aria-valuetext',
+      '40 de 100 para o nivel 8. Faltam 60.',
+    )
+  })
+
+  it('o trilho e alcancavel pelo teclado, para o texto nao depender de mouse', () => {
+    // Hover sozinho exclui tela de toque e navegacao por teclado. O trilho
+    // focalizavel e o que faz o texto aparecer para quem usa Tab.
+    render(<BarraDeExperiencia detalhe={pokemonDetalheExemplo()} />)
+
+    expect(screen.getByRole('progressbar')).toHaveAttribute('tabindex', '0')
   })
 
   it('no piso do nivel a barra fica vazia', () => {

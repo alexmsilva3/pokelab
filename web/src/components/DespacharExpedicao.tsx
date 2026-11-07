@@ -224,6 +224,19 @@ export function DespacharExpedicao({ onDespachado }: DespacharExpedicaoProps) {
     <section className="despacho-expedicao" aria-label="Despachar expedicao">
       <h2>Nova expedicao</h2>
 
+      {/*
+        Duas colunas em tela larga: as escolhas de um lado, a previa do outro,
+        FIXA. Antes tudo empilhava, e como a previa reage a cada mudanca o
+        professor escolhia no topo, rolava para ver o efeito, e voltava para
+        mudar. Com a previa acompanhando a rolagem, a consequencia da escolha
+        fica sempre a vista.
+
+        Em tela estreita volta a uma coluna so e a previa desce para o fim —
+        nao ha largura para duas, e previa antes das opcoes mostraria o efeito
+        de uma escolha que ainda nao existe.
+      */}
+      <div className="despacho-layout">
+        <div className="despacho-etapas">
       <fieldset className="despacho-etapa">
         <legend>1. Treinador</legend>
         <ul className="despacho-lista-opcoes" aria-label="Escolher treinador">
@@ -395,7 +408,9 @@ export function DespacharExpedicao({ onDespachado }: DespacharExpedicaoProps) {
           </ul>
         )}
       </fieldset>
+        </div>
 
+        <aside className="despacho-painel" aria-label="Previa e envio">
       {estadoPrevia.tipo === 'incompleto' && (
         <p className="aviso-vazio">Escolha um treinador e um destino para ver a previa.</p>
       )}
@@ -456,6 +471,8 @@ export function DespacharExpedicao({ onDespachado }: DespacharExpedicaoProps) {
         >
           {despachando ? 'Despachando...' : 'Despachar'}
         </button>
+      </div>
+        </aside>
       </div>
     </section>
   )

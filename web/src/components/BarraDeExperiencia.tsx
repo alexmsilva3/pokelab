@@ -45,22 +45,31 @@ export function BarraDeExperiencia({ detalhe }: BarraDeExperienciaProps) {
   return (
     <div className="barra-exp">
       {/*
-        role="progressbar" com os tres aria-value*: e assim que leitor de tela
-        anuncia "40 por cento". O texto abaixo continua existindo porque o
-        numero exato importa para quem planeja a proxima expedicao — a barra da
-        a nocao, o texto da a conta.
+        O numero exato aparece ao passar o mouse, para a ficha nao carregar uma
+        linha de texto o tempo todo. Mas hover sozinho exclui gente: em tela de
+        toque nao existe, e quem navega por teclado nunca passa por cima de
+        nada. Por isso o trilho e focalizavel (`tabIndex`) e o CSS mostra o
+        texto tambem em `:focus-visible` e `:focus-within`.
+
+        E o texto continua na arvore de acessibilidade pelo `aria-label`: para
+        leitor de tela ele nunca esteve escondido, porque esconder o numero de
+        quem nao ve a barra seria esconder a informacao inteira.
       */}
       <div
         className="barra-exp-trilho"
         role="progressbar"
+        tabIndex={0}
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
+        aria-valuetext={texto}
         aria-label={`Experiencia do nivel ${detalhe.nivel}`}
       >
         <div className="barra-exp-preenchida" style={{ width: `${pct}%` }} />
       </div>
-      <p className="barra-exp-texto">{texto}</p>
+      <p className="barra-exp-texto" aria-hidden="true">
+        {texto}
+      </p>
     </div>
   )
 }

@@ -1554,10 +1554,24 @@ button:disabled {
   background: var(--cor-acento);
 }
 
+/* O numero exato so aparece ao passar o mouse ou ao focar o trilho pelo
+   teclado. `visibility` em vez de `display: none` porque o espaco da linha
+   continua reservado — sem isso a ficha inteira pula quando o texto aparece. */
 .barra-exp-texto {
   margin: 0;
   font-size: 0.85rem;
   color: var(--cor-texto-suave);
+  visibility: hidden;
+}
+
+.barra-exp:hover .barra-exp-texto,
+.barra-exp:focus-within .barra-exp-texto {
+  visibility: visible;
+}
+
+.barra-exp-trilho:focus-visible {
+  outline: 2px solid var(--cor-acento);
+  outline-offset: 2px;
 }
 
 
@@ -1620,4 +1634,43 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: var(--espaco-1);
+}
+
+/* Tela de despacho em duas colunas.
+   As escolhas de um lado, a previa do outro e FIXA. Antes tudo empilhava: como
+   a previa reage a cada mudanca, o professor escolhia no topo, rolava para ver
+   o efeito e voltava para mudar.
+
+   `minmax(0, 2fr)` na primeira coluna, nao `2fr`: o padrao de grid e `min-width:
+   auto`, e o mapa SVG dentro dela forcaria a coluna a nunca encolher. */
+.despacho-layout {
+  display: grid;
+  gap: var(--espaco-4);
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  align-items: start;
+}
+
+.despacho-painel {
+  position: sticky;
+  top: var(--espaco-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--espaco-2);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  background: var(--cor-superficie);
+  padding: var(--espaco-3);
+}
+
+/* Sem largura para duas colunas, volta a uma. A previa fica DEPOIS das
+   escolhas: antes delas mostraria o efeito de uma escolha que ainda nao existe.
+   E deixa de ser fixa — painel grudado numa tela baixa come o espaco util. */
+@media (max-width: 860px) {
+  .despacho-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .despacho-painel {
+    position: static;
+  }
 }
