@@ -124,3 +124,76 @@ Uma tela nova, `RelatorioDeCampo`, alcançada do painel de expedições quando o
 ## Risco
 
 O maior é silencioso: uma mudança futura na ordem dos sorteios reescreve o passado de toda expedição não resolvida. O teste de ordem fixa existe para quebrar ruidosamente quando isso acontecer.
+
+## Contratos de API
+
+Esta seção é a verdade para os dois lados. Frontend e backend não inventam campo.
+
+### `POST /expeditions/{id}/claim` → 200
+
+```jsonc
+{
+  "expedicao": { /* ExpedicaoLer, como hoje, com status já terminal */ },
+  "relatorio": {
+    "status": "CONCLUIDA_SUCESSO",      // ou CONCLUIDA_FALHA
+    "resolvida_em": "2026-11-06T18:40:00Z",
+    "encontros": 5,
+    "vitorias": 4,
+    "derrotas": 1,
+    "local_desbloqueado": true,          // false em falha ou se já estava aberto
+    "eventos": [
+      {
+        "ordem": 0,
+        "tipo": "PARTIDA",
+        "texto": "Ash partiu de Pallet Town rumo a Viridian Forest.",
+        "ocorrido_em_minuto": 0,
+        "payload": null
+      },
+      {
+        "ordem": 1,
+        "tipo": "BATALHA",
+        "texto": "Bulbasaur enfrentou Caterpie (nivel 5) e venceu.",
+        "ocorrido_em_minuto": 3,
+        "payload": {
+          "especie_id": 10, "especie_nome": "Caterpie", "nivel_selvagem": 5,
+          "venceu": true, "chance": 0.72, "exp_da_batalha": 28
+        }
+      }
+    ],
+    "capturas": [
+      { "especie_id": 10, "especie_nome": "Caterpie", "nivel": 5, "pokemon_id": "uuid" }
+    ],
+    "time": [
+      {
+        "pokemon_id": "uuid", "especie_id": 1, "especie_nome": "Bulbasaur",
+        "nivel_antes": 5, "nivel_depois": 7, "exp_ganha": 112,
+        "hp_antes_pct": 100, "hp_depois_pct": 74,
+        "evoluiu_para_id": null, "evoluiu_para_nome": null
+      }
+    ],
+    "treinador": { "nivel_antes": 1, "nivel_depois": 2, "exp_ganha": 64 },
+    "laboratorio": { "nivel_antes": 1, "nivel_depois": 1, "exp_ganha": 160 },
+    "itens_consumidos": [ { "item_id": "poke-ball", "nome": "Poke Ball", "quantidade": 3 } ],
+    "itens_encontrados": [ { "item_id": "potion", "nome": "Potion", "quantidade": 1 } ],
+    "especies_vistas": [ { "especie_id": 10, "nome": "Caterpie", "primeira_vez": true } ]
+  }
+}
+```
+
+Recusas, todas 409 com código: `EXPEDICAO_EM_CURSO` (o prazo não venceu), `EXPEDICAO_ABORTADA`. Expedição de outro laboratório: 404.
+
+Uma segunda chamada numa expedição já resolvida devolve **o mesmo corpo**, com status 200 e sem escrever nada.
+
+### `GET /expeditions/{id}` → 200
+
+Ganha `"relatorio": { ... } | null`. Nulo enquanto não resolvida. Nenhum outro campo muda, e a rota continua sem escrever.
+
+### Leituras de Pokémon
+
+`hp_atual_pct` passa a ser o **valor derivado** (já recuperado até agora), em toda rota que devolve Pokémon — lista, ficha, time de treinador. O valor cru do banco não aparece na API. Acrescenta-se `hp_atualizado_em` para a interface poder explicar a recuperação, e nada mais muda de forma.
+
+### Tipos no frontend
+
+`web/src/api/tipos.ts` ganha `RelatorioDeCampo`, `EventoDeExpedicao`, `TipoDeEvento`, `CapturaDoRelatorio`, `PokemonDoRelatorio`, `GanhoDeExperiencia` e `ItemDoRelatorio`. `web/src/api/fixtures.ts` ganha a fixture tipada de cada um — todo mock de teste sai de lá.
+
+`TipoDeEvento` é a união fechada: `PARTIDA | BATALHA | CAPTURA | CAPTURA_FALHA | DESCOBERTA | ITEM | CONTRATEMPO | SUBIU_NIVEL | EVOLUCAO | RETORNO`.
