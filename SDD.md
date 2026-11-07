@@ -964,7 +964,7 @@ Antes de pagar isso, medir se o problema é grande: a tarefa de relatório da Fa
 
 As 100 espécies que não evoluem por nível: pedra, troca e amizade. Levantamento na tarefa 10.7 (questão 17).
 
-### 10.5 Mapa de distribuição de espécies
+### 10.6 Mapa de distribuição de espécies
 
 `PokedexAvistamento` acumula desde a Fase 7 onde cada espécie foi vista. Falta exibir — camada no mapa, janela própria, ou filtro na escolha do destino (questão 23).
 
