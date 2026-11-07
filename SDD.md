@@ -828,9 +828,35 @@ Esta fase **não toca o motor da Fase 7**. O viveiro não limita a captura: ele 
 | 9.5 | Calibrar a economia de itens (tarefas 7.5 e 7.6: consumo de cura e achados em campo) para que o estoque não seque nem acumule | `pokelab-balance` | `pokelab-domain-rules` |
 | 9.6 | Calibrar a curva de nível do laboratório: quantas expedições e entregas até o 4º treinador, e se o ritmo acompanha o acesso a locais mais difíceis | `pokelab-balance` | `pokelab-domain-rules` |
 | 9.7 | Calibrar a economia de entregas: moeda por hora, e se entregar um Pokémon de nível alto compensa perdê-lo | `pokelab-balance` | `pokelab-domain-rules` |
-| 9.8 | Testes de regressão de balanceamento (faixas aceitáveis, não valores exatos) | `pokelab-test` | — |
+| 9.8 | **Experimento do tamanho de time**: duas simulações comparadas em branches separadas (ver abaixo) | `pokelab-balance` | `pokelab-domain-rules` |
+| 9.9 | Testes de regressão de balanceamento (faixas aceitáveis, não valores exatos) | `pokelab-test` | — |
 
-**Pronto quando:** a simulação mostra progressão sem travas nem trivialidade, e as faixas estão fixadas em teste.
+**Pronto quando:** a simulação mostra progressão sem travas nem trivialidade, as faixas estão fixadas em teste, e o experimento 9.8 tem veredito com número.
+
+#### 9.8 — O experimento do tamanho de time
+
+A pergunta: o teto de 3 Pokémon no time é a regra certa, ou o teto deveria ser 6?
+
+Com teto 3, a bagagem fica sempre entre 3 e 5 e o professor sempre captura alguma coisa. Com teto 6 a faixa vai de 0 a 6, e ele pode montar expedição de puro combate — um espaço de decisão mais largo.
+
+**O risco é que o espaço largo colapse.** A dificuldade de um encontro hoje não considera o tamanho do time: `poder_do_time` soma os membros, então seis dão cerca do dobro do poder de três no mesmo lugar, empurrando a chance de vitória ao teto de 95%. O único custo seria abrir mão da captura, e a jogada ótima viraria rotina — time de 6 para subir nível em segurança, troca, time de 1 para coletar. Mais opções, menos decisão.
+
+Por isso o braço B não é só mudar a constante: ele muda a regra junto.
+
+**Braço A — `balance/time-3`.** A regra como está. `TAMANHO_MAXIMO_TIME = 3`, dificuldade e recompensa como hoje. É a linha de base; calibra-se normalmente e registram-se as curvas.
+
+**Braço B — `balance/time-6`.** `TAMANHO_MAXIMO_TIME = 6`, mais duas mudanças de fórmula que existem para impedir o colapso:
+- a **dificuldade** do encontro passa a considerar o tamanho do time, para que seis não virem passe livre;
+- a **recompensa** passa a considerar o tamanho do time, para que a divisão de experiência não seja a única penalidade.
+
+A forma exata dessas duas é parte do experimento, não premissa. O que não pode acontecer é o braço B ser avaliado sem elas: seria comparar uma regra com a mesma regra desbalanceada, e o resultado seria conhecido de antemão.
+
+**Como comparar.** As duas branches saem do mesmo commit e rodam a **mesma** simulação da tarefa 9.1, com as mesmas sementes. O que decide:
+- taxa de sucesso e capturas por hora em cada composição possível de time;
+- existe composição **dominante** — uma que seja melhor em tudo? Se existe, o braço falhou, porque decisão com resposta certa não é decisão;
+- a dispersão entre as composições: muita, e o jogo pune quem escolhe errado; pouca, e a escolha não importa.
+
+**Por que branches separadas.** O braço B toca constante, invariante 1 e duas fórmulas. Descartá-lo precisa ser um `git branch -D`, não uma arqueologia pelo diff. O veredito vira ADR na branch vencedora, com os números que o produziram — e se o veredito for manter o teto de 3, o ADR registra **por que** 6 foi testado e reprovado, que é o que impede a pergunta de voltar daqui a seis meses sem resposta.
 
 ---
 
