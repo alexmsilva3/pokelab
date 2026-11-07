@@ -233,3 +233,48 @@ def aplicar_experiencia(
         experiencia_antes=experiencia_antes,
         experiencia_depois=experiencia_depois,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ProgressoNoNivel:
+    """Onde o Pokemon esta DENTRO do nivel atual.
+
+    Existe porque a barra de progresso precisa de uma fracao, e fracao exige
+    numerador e denominador. O contrato antigo so mandava
+    `experiencia_para_o_proximo_nivel` — o que FALTA —, e com isso o cliente
+    nao tem como saber o tamanho do degrau: faltar 44 e muito ou pouco depende
+    de o nivel custar 60 ou 6000.
+
+    Calcular isso no cliente exigiria as curvas de crescimento, que sao regra
+    de jogo (Artigo II). Entao o servidor manda os dois numeros prontos.
+
+    `vencida` e `tamanho` sao do NIVEL ATUAL, nunca do total acumulado: a barra
+    mede o degrau, nao a escada.
+    """
+
+    vencida: int
+    tamanho: int
+
+    @property
+    def fracao(self) -> float:
+        """Entre 0.0 e 1.0. Nivel de tamanho zero nao existe, mas se existir e 1."""
+        if self.tamanho <= 0:
+            return 1.0
+        return self.vencida / self.tamanho
+
+
+def progresso_no_nivel(curva: str | CurvaCrescimento, experiencia: int) -> ProgressoNoNivel:
+    """Quanto do nivel atual ja foi vencido, e de que tamanho ele e."""
+    if experiencia < 0:
+        raise ExperienciaInvalida(f"Experiencia negativa: {experiencia}.")
+
+    nivel = nivel_para_experiencia(curva, experiencia)
+    if nivel >= balance.NIVEL_MAXIMO:
+        # No teto nao ha proximo degrau. Cheio e a leitura honesta: o Pokemon
+        # chegou, e uma barra vazia diria o contrario.
+        piso = experiencia_total_para_nivel(curva, balance.NIVEL_MAXIMO)
+        return ProgressoNoNivel(vencida=max(0, experiencia - piso), tamanho=0)
+
+    piso = experiencia_total_para_nivel(curva, nivel)
+    teto = experiencia_total_para_nivel(curva, nivel + 1)
+    return ProgressoNoNivel(vencida=experiencia - piso, tamanho=teto - piso)

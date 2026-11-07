@@ -124,6 +124,16 @@ export interface PokemonDetalhe extends PokemonResumo {
   experiencia: number
   /** Nulo no nivel maximo: ver `nivel_maximo` para o caso de certeza. */
   experiencia_para_proximo_nivel: number | null
+  /**
+   * O degrau atual, nao a escada: quanto do nivel ja foi vencido e de que
+   * tamanho ele e. Vem prontos do servidor porque calcula-los exigiria as
+   * curvas de crescimento, que sao regra de jogo (Artigo II).
+   *
+   * No nivel maximo `experiencia_do_nivel` e zero — nao ha proximo degrau — e
+   * a barra se desenha cheia.
+   */
+  experiencia_vencida_no_nivel: number
+  experiencia_do_nivel: number
   nivel_maximo: boolean
   origem: OrigemPokemon
   /** Nulo para origem INICIAL: starters nao tem local de captura. */

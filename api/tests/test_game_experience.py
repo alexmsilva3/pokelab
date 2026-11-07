@@ -18,6 +18,7 @@ from app.game.experience import (
     experiencia_para_o_proximo_nivel,
     experiencia_total_para_nivel,
     nivel_para_experiencia,
+    progresso_no_nivel,
     tabela_da_curva,
 )
 
@@ -225,3 +226,64 @@ def test_nivel_que_nao_corresponde_a_experiencia_e_recusado():
 def test_experiencia_maxima_e_o_topo_da_tabela():
     for curva in CurvaCrescimento:
         assert experiencia_maxima(curva) == tabela_da_curva(curva)[-1]
+
+
+# --- Progresso dentro do nivel (barra da ficha) ------------------------------
+# A barra precisa de uma fracao, e fracao exige numerador e denominador. O
+# contrato antigo so mandava o que FALTA, e faltar 44 e muito ou pouco conforme
+# o degrau custe 60 ou 6000.
+
+
+def test_progresso_no_piso_do_nivel_e_zero():
+    curva = CurvaCrescimento.MEDIA_RAPIDA
+    piso = experiencia_total_para_nivel(curva, 10)
+
+    progresso = progresso_no_nivel(curva, piso)
+
+    assert progresso.vencida == 0
+    assert progresso.fracao == 0.0
+
+
+def test_progresso_logo_antes_do_proximo_nivel_e_quase_cheio():
+    curva = CurvaCrescimento.MEDIA_RAPIDA
+    teto = experiencia_total_para_nivel(curva, 11)
+
+    progresso = progresso_no_nivel(curva, teto - 1)
+
+    assert progresso.vencida == progresso.tamanho - 1
+    assert 0.9 < progresso.fracao < 1.0
+
+
+def test_vencida_mais_o_que_falta_fecha_o_tamanho_do_nivel():
+    # A soma das duas leituras tem de fechar o degrau: e o mesmo intervalo
+    # contado de dois lados, e divergir significaria uma das duas mentindo.
+    curva = CurvaCrescimento.LENTA
+    for experiencia in (0, 500, 12_345, 400_000):
+        progresso = progresso_no_nivel(curva, experiencia)
+        falta = experiencia_para_o_proximo_nivel(curva, experiencia)
+
+        assert progresso.vencida + falta == progresso.tamanho
+
+
+def test_no_nivel_maximo_o_degrau_tem_tamanho_zero_e_a_barra_enche():
+    curva = CurvaCrescimento.RAPIDA
+    teto = experiencia_total_para_nivel(curva, balance.NIVEL_MAXIMO)
+
+    progresso = progresso_no_nivel(curva, teto)
+
+    assert progresso.tamanho == 0
+    # Cheia e a leitura honesta: o Pokemon chegou. Vazia diria o contrario.
+    assert progresso.fracao == 1.0
+
+
+def test_a_fracao_nunca_sai_de_zero_a_um():
+    for curva in CurvaCrescimento:
+        for experiencia in (0, 1, 999, 50_000, experiencia_maxima(curva)):
+            fracao = progresso_no_nivel(curva, experiencia).fracao
+
+            assert 0.0 <= fracao <= 1.0
+
+
+def test_experiencia_negativa_e_recusada_no_progresso():
+    with pytest.raises(ExperienciaInvalida):
+        progresso_no_nivel(CurvaCrescimento.MEDIA_RAPIDA, -1)

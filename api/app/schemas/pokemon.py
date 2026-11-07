@@ -123,6 +123,12 @@ class PokemonDetalhe(PokemonResumo):
     experiencia: int
     # Nulo no nivel maximo — nunca um numero enganoso, nunca zero (criterio 6).
     experiencia_para_proximo_nivel: int | None
+    # Os dois numeros do DEGRAU atual, nao da escada: sao eles que permitem
+    # desenhar a barra sem o cliente conhecer as curvas de crescimento, que sao
+    # regra de jogo (Artigo II). `experiencia_para_proximo_nivel` sozinho nao
+    # basta — faltar 44 e muito ou pouco conforme o nivel custe 60 ou 6000.
+    experiencia_vencida_no_nivel: int
+    experiencia_do_nivel: int
     nivel_maximo: bool
     origem: str
     local_captura: str | None

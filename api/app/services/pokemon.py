@@ -18,7 +18,7 @@ from app.core.erros import ConflitoDeSoltura, RecursoNaoEncontrado
 from app.game import balance
 from app.game import soltar as soltar_dominio
 from app.game import trainers as trainers_dominio
-from app.game.experience import experiencia_para_o_proximo_nivel
+from app.game.experience import experiencia_para_o_proximo_nivel, progresso_no_nivel
 from app.game.stats import StatsBase, calcular_stats_efetivos, hp_atual_absoluto
 from app.models import PokemonInstancia
 from app.repositories import laboratorios as laboratorios_repo
@@ -200,6 +200,8 @@ def _montar_detalhe(pokemon: PokemonInstancia) -> PokemonDetalhe:
         else experiencia_para_o_proximo_nivel(especie.curva_crescimento, pokemon.experiencia)
     )
 
+    progresso = progresso_no_nivel(especie.curva_crescimento, pokemon.experiencia)
+
     return PokemonDetalhe(
         id=pokemon.id,
         nome=pokemon.apelido or especie.nome,
@@ -219,6 +221,8 @@ def _montar_detalhe(pokemon: PokemonInstancia) -> PokemonDetalhe:
         hp_maximo=stats.hp,
         experiencia=pokemon.experiencia,
         experiencia_para_proximo_nivel=experiencia_restante,
+        experiencia_vencida_no_nivel=progresso.vencida,
+        experiencia_do_nivel=progresso.tamanho,
         nivel_maximo=nivel_maximo,
         origem=pokemon.origem,
         local_captura=pokemon.local_captura.nome if pokemon.local_captura else None,

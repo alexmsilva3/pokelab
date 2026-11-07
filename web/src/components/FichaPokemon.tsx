@@ -8,6 +8,7 @@ import { atualizarApelido, buscarPokemon } from '@/api/pokemon'
 import { ApiError } from '@/api/client'
 import type { OrigemPokemon, PokemonDetalhe } from '@/api/tipos'
 import { RotuloTipo } from '@/components/RotuloTipo'
+import { BarraDeExperiencia } from '@/components/BarraDeExperiencia'
 import { SpritePokemon } from '@/components/SpritePokemon'
 
 export interface FichaPokemonProps {
@@ -177,11 +178,7 @@ export function FichaPokemon({ id, onAtualizado }: FichaPokemonProps) {
         </div>
       </dl>
 
-      <p className="ficha-pokemon-exp">
-        {detalhe.nivel_maximo
-          ? 'Nivel maximo atingido.'
-          : `Faltam ${detalhe.experiencia_para_proximo_nivel} de experiencia para o proximo nivel.`}
-      </p>
+      <BarraDeExperiencia detalhe={detalhe} />
 
       <dl className="ficha-pokemon-origem">
         <div>

@@ -163,6 +163,11 @@ export function pokemonDetalheExemplo(
     hp_maximo: 19,
     experiencia: 40,
     experiencia_para_proximo_nivel: 60,
+    // 40 de 100 no degrau: a barra fica em 40%, e os tres numeros fecham
+    // (40 vencidos + 60 que faltam = 100 de tamanho). Fixture com numeros que
+    // nao fecham ensina errado quem for ler.
+    experiencia_vencida_no_nivel: 40,
+    experiencia_do_nivel: 100,
     nivel_maximo: false,
     origem: 'INICIAL',
     local_captura: null,
