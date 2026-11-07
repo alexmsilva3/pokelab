@@ -398,7 +398,26 @@ A consequência de design importa: um professor que nunca despachou ninguém par
 
 A Central de Entregas é a fonte de moeda do jogo e o segundo uso para um treinador.
 
-**Geração.** O jogo mantém `ENTREGAS_DISPONIVEIS` pedidos na lista. Cada pedido sorteia de uma a três espécies distintas e uma quantidade de 1 a `QUANTIDADE_MAXIMA_POR_ESPECIE` para cada. As espécies saem do que o professor já **viu**, com peso maior para o que ele já **capturou** — assim a lista tem pedidos atendíveis hoje e alguns que valem como objetivo. O destino é uma cidade já desbloqueada.
+**Geração.** O jogo mantém `ENTREGAS_DISPONIVEIS` pedidos na lista. Cada pedido sorteia de uma a três espécies distintas e uma quantidade de 1 a `QUANTIDADE_MAXIMA_POR_ESPECIE` para cada. O destino é uma cidade já desbloqueada.
+
+**As espécies saem do nível do laboratório, não da Pokédex.** Sortear do que o professor já viu faria da Central um laço fechado: ela só pediria o que ele já conhece, e um sistema que devia empurrar o professor para fora do mapa conhecido viraria eco do que ele já fez. Um pedido de Clefairy para quem nunca pisou em Mt. Moon é o contrário disso — é o jogo dizendo que Clefairy existe em algum lugar e que vale ir procurar.
+
+A raridade de cada espécie sai de `taxa_captura`, que o seed já traz e que vai de 3 (Mewtwo) a 255 (Caterpie), com mediana em 75. O nível do laboratório abre uma **banda de raridade**:
+
+```
+candidatas = espécies que aparecem em algum local ALCANÇÁVEL
+           ∩ espécies dentro da banda de raridade do nível do laboratório
+```
+
+Laboratório nível 1 pede o que é comum; conforme sobe, a banda se estende para o raro. Não é preciso um segundo mecanismo favorecendo o inédito: o que é raro é, por construção, o que o professor provavelmente ainda não viu. A banda faz o trabalho sozinha, e um sistema com uma alavanca é mais fácil de calibrar na Fase 9 do que um com duas.
+
+O filtro de **alcançável** é o que separa pedido aspiracional de pedido morto. A espécie precisa viver num destino válido de expedição — desbloqueado, ou vizinho de desbloqueado — senão o pedido nomeia algo que o professor não tem como obter, e isso não é objetivo, é ruído. É a mesma noção de alcance de `exigir_destino_alcancavel`, reaproveitada.
+
+Isso também resolve o começo do jogo sem caso especial: laboratório nível 1 com só Pallet aberta alcança Pallet e Route 1, cujas espécies são todas comuns. A Pokédex vazia deixa de ser borda, porque a Pokédex deixou de entrar na conta.
+
+O que a v1 **não** dá é onde procurar: o pedido nomeia a espécie e o professor sai atrás. O `PokedexAvistamento` já acumula essa informação desde a Fase 7, e exibi-la no mapa é o item 10.7 do backlog — é lá que o pedido inédito deixa de ser adivinhação e vira pista.
+
+E o nível do laboratório ganha um segundo uso. Até aqui ele só mexia em `limite_treinadores`; o SDD o chama de **o** eixo de progressão do professor, e um eixo que move uma coisa só é um número, não um eixo.
 
 **Prazo da oferta.** Cada pedido nasce com `expira_em`, `VALIDADE_ENTREGA_MINUTOS` depois de gerado. Vencido o prazo sem aceite, o pedido deixa de ser aceitável e sai de circulação. Sem isso a lista empaca: três pedidos que o professor não consegue atender hoje ficariam ali para sempre, e a Central viraria uma tela morta.
 
@@ -778,7 +797,7 @@ Esta fase **não toca o motor da Fase 7**. O viveiro não limita a captura: ele 
 | 8.5 | `GET /ranch`: ocupação, capacidade e o que está guardado; ocupação no resumo do laboratório | `pokelab-api` | `pokelab-api-conventions` |
 | 8.6 | `DELETE /pokemon/{id}`: solta o Pokémon do viveiro ou do time, sem recompensa, mantendo a Pokédex intacta | `pokelab-api` | `pokelab-api-conventions` |
 | 8.7 | Modelos `Entrega` e `EntregaRequisito`, campo `comprometido_entrega_id` em `PokemonInstancia`, migração | `pokelab-api` | `pokelab-api-conventions` |
-| 8.8 | `game/delivery.py`: gerador de pedidos — 1 a 3 espécies distintas sorteadas do que o professor já viu, com peso maior para o já capturado, quantidade ponderada pela taxa de captura (questão 22), destino entre as cidades desbloqueadas, e `expira_em` a partir de `VALIDADE_ENTREGA_MINUTOS`. Pokédex vazia é caso de borda, não exceção | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.8 | `game/delivery.py`: gerador de pedidos — 1 a 3 espécies distintas sorteadas da **banda de raridade do nível do laboratório**, entre as que vivem em local alcançável, quantidade ponderada pela taxa de captura (questão 22), destino entre as cidades desbloqueadas, e `expira_em` a partir de `VALIDADE_ENTREGA_MINUTOS`. A Pokédex não entra na conta | `pokelab-domain` | `pokelab-domain-rules` |
 | 8.9 | **Prazo da oferta**: `EXPIRADA` como estado observado derivado de `expira_em`, pela mesma função única do ADR-004. Pedido vencido não pode ser aceito e some dos aceitáveis | `pokelab-domain` | `pokelab-domain-rules` |
 | 8.10 | Duração da entrega (só travessia, ida e volta) e cálculo das recompensas em moeda e experiência | `pokelab-domain` | `pokelab-domain-rules` |
 | 8.11 | `GET /deliveries`: disponíveis, em curso, expiradas e histórico, com o motivo de cada pedido inviável hoje e quantas vagas existem para repor | `pokelab-api` | `pokelab-api-conventions` |
@@ -791,7 +810,7 @@ Esta fase **não toca o motor da Fase 7**. O viveiro não limita a captura: ele 
 | 8.18 | Seleção dos Pokémon no aceite, com confirmação explícita nomeando quem sai do laboratório para sempre | `pokelab-frontend` | `pokelab-ui-kit` |
 | 8.19 | Testes do viveiro: três expedições voltam com mais Pokémon do que cabe e **todos entram**; transbordado, o despacho é recusado e reclamar, entregar e soltar continuam liberados; soltar devolve lugar e não paga nada; soltar Pokémon em expedição ou comprometido recusado; soltar a última criatura do laboratório recusado; Pokédex sobrevive ao soltar | `pokelab-test` | — |
 | 8.20 | Testes do prazo: pedido vence sozinho sem nenhuma escrita no banco; pedido expirado não pode ser aceito; repor vaga expirada não espera os 15 minutos; descartar pedido válido continua esperando | `pokelab-test` | — |
-| 8.21 | Testes da entrega: pedido com 4 espécies rejeitado na geração; aceite com Pokémon que não atende ao pedido rejeitado; Pokémon comprometido fora de time e de expedição; claim concorrente não apaga Pokémon duas vezes | `pokelab-test` | — |
+| 8.21 | Testes da entrega: pedido com 4 espécies rejeitado na geração; laboratório nível 1 só pede espécie comum e nunca uma fora do alcance; subir o nível amplia a banda para o raro; Pokédex vazia gera pedido normalmente; aceite com Pokémon que não atende ao pedido rejeitado; Pokémon comprometido fora de time e de expedição; claim concorrente não apaga Pokémon duas vezes | `pokelab-test` | — |
 
 **Pronto quando:** o professor vê o viveiro transbordar e tem de escolher quem solta para voltar a despachar, escolhe quais Pokémon manda numa entrega, perde esses Pokémon, ganha moeda e experiência de laboratório, recupera o lugar no viveiro, e o treinador fica indisponível durante a viagem. Um pedido que ninguém aceitou vence sozinho e dá lugar a outro, e o professor pode soltar o que não quer guardar.
 
