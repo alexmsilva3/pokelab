@@ -1272,3 +1272,41 @@ button:disabled {
   justify-content: flex-end;
   gap: var(--espaco-2);
 }
+
+/* As secoes do laboratorio.
+   Botao-link, nao link de texto: cada um e um destino de peso igual, e o
+   professor escolhe entre eles como escolheria num menu. O hover muda cor de
+   borda e fundo sem transicao, que e a regra da interface (lista-e-botao, sem
+   animacao). */
+.navegacao-secoes ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espaco-2);
+  margin: 0 0 var(--espaco-4);
+  padding: 0;
+  list-style: none;
+}
+
+.navegacao-secoes a {
+  display: block;
+  padding: var(--espaco-2) var(--espaco-3);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  background: var(--cor-superficie);
+  color: var(--cor-texto);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navegacao-secoes a:hover {
+  border-color: var(--cor-acento);
+  color: var(--cor-acento);
+}
+
+/* O foco do teclado nao pode depender so da cor: quem navega por Tab precisa
+   ver onde esta sem distinguir vermelho de cinza. */
+.navegacao-secoes a:focus-visible {
+  outline: 2px solid var(--cor-acento);
+  outline-offset: 2px;
+}

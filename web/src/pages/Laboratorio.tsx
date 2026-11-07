@@ -223,13 +223,40 @@ export function Laboratorio() {
       <header>
         <h1>{laboratorio.nome}</h1>
         <p>Professor {professor.nome_exibicao ?? professor.usuario}</p>
-        <Link to="/pokedex">Ver Pokedex</Link>
-        <Link to="/treinadores">Ver treinadores</Link>
-        <Link to="/mapa">Ver mapa</Link>
-        <Link to="/expedicoes">Ver expedicoes</Link>
-        <Link to="/viveiro">Ver viveiro</Link>
-        <Link to="/entregas">Ver central de entregas</Link>
       </header>
+
+      {/*
+        As secoes do laboratorio. Eram seis <Link> soltos dentro do <header>,
+        sem classe e sem regra de estilo: o navegador os desenhava em linha,
+        colados, e o menu saia como uma frase unica
+        ("Ver PokedexVer treinadoresVer mapa...").
+
+        Lista dentro de <nav> e o par semantico certo — o leitor de tela
+        anuncia "navegacao, lista de 6 itens" e pode pular o bloco inteiro —,
+        e e o que da ao CSS um gancho para separar e alinhar.
+      */}
+      <nav className="navegacao-secoes" aria-label="Secoes do laboratorio">
+        <ul>
+          <li>
+            <Link to="/pokedex">Pokedex</Link>
+          </li>
+          <li>
+            <Link to="/treinadores">Treinadores</Link>
+          </li>
+          <li>
+            <Link to="/mapa">Mapa</Link>
+          </li>
+          <li>
+            <Link to="/expedicoes">Expedicoes</Link>
+          </li>
+          <li>
+            <Link to="/viveiro">Viveiro</Link>
+          </li>
+          <li>
+            <Link to="/entregas">Central de entregas</Link>
+          </li>
+        </ul>
+      </nav>
 
       <dl className="resumo-laboratorio" aria-label="Resumo do laboratorio">
         <div>
