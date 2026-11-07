@@ -83,6 +83,56 @@ NOMES_DE_TREINADOR: Final[tuple[str, ...]] = (
 # Paleta fechada em vez de cor livre do digest: tom aleatorio em HSL produz
 # combinacoes ilegiveis com texto branco. Todas estas aguentam a inicial por
 # cima.
+# Classes de treinador de FireRed/LeafGreen, em data/sprites/treinadores/.
+# FRLG de proposito: e Kanto, que e o mapa do jogo. Personagens com nome
+# proprio, duplas numa imagem so e os sprites de Hoenn ficam em notaveis/,
+# fora do catalogo — um assistente de laboratorio nao e o Brock.
+# A ordem e
+# canonica: o sprite sai de um indice sobre esta tupla, entao reordenar troca
+# o retrato de todo treinador ja gravado. Acrescentar no FIM e seguro.
+CLASSES_DE_TREINADOR: Final[tuple[str, ...]] = (
+    "aroma-lady",
+    "beauty",
+    "biker",
+    "bird-keeper",
+    "black-belt",
+    "bug-catcher",
+    "burglar",
+    "camper",
+    "channeler",
+    "cooltrainer-f",
+    "cooltrainer-m",
+    "crush-girl",
+    "cue-ball",
+    "engineer",
+    "fisherman",
+    "gamer",
+    "gentleman",
+    "hiker",
+    "juggler",
+    "lady",
+    "lass",
+    "painter",
+    "picnicker",
+    "pokemaniac",
+    "pokemon-breeder",
+    "pokemon-ranger-f",
+    "pokemon-ranger-m",
+    "psychic-f",
+    "psychic-m",
+    "rocker",
+    "ruin-maniac",
+    "sailor",
+    "scientist",
+    "super-nerd",
+    "swimmer-f",
+    "swimmer-m",
+    "tamer",
+    "tuber",
+    "youngster",
+)
+
+
 PALETA_AVATAR: Final[tuple[str, ...]] = (
     "#1f7a3f",
     "#2563a8",
@@ -133,14 +183,29 @@ DESCRICAO_DO_STATUS: Final[dict[StatusTreinador, str]] = {
 
 @dataclass(frozen=True, slots=True)
 class Avatar:
-    """Identidade visual de um treinador, sem arquivo."""
+    """Identidade visual de um treinador.
+
+    As iniciais e a cor nao dependem de arquivo nenhum e continuam sendo o
+    retrato de verdade: sao elas que aparecem se o acervo de sprites nao
+    estiver montado, ou se a classe gravada sumir de `CLASSES_DE_TREINADOR`.
+
+    `classe` e a camada por cima — o sprite da classe de treinador dos jogos.
+    Sai do MESMO digest da cor, de uma fatia diferente, para que dois
+    treinadores com a mesma cor nao herdem tambem o mesmo retrato.
+    """
 
     iniciais: str
     cor: str
+    classe: str
+
+    @property
+    def sprite(self) -> str:
+        """Caminho do sprite sob /sprites, como `PokemonEspecie.sprite_frente`."""
+        return f"treinadores/{self.classe}.png"
 
     def para_dicionario(self) -> dict[str, str]:
         """Forma serializavel, que e como o avatar e guardado e devolvido."""
-        return {"iniciais": self.iniciais, "cor": self.cor}
+        return {"iniciais": self.iniciais, "cor": self.cor, "classe": self.classe}
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,8 +245,13 @@ def gerar_avatar(semente: str) -> Avatar:
     """
     if not semente.strip():
         raise AvatarInvalido("A semente do avatar nao pode ser vazia.")
-    cor = PALETA_AVATAR[_digestao(semente) % len(PALETA_AVATAR)]
-    return Avatar(iniciais=_iniciais(semente), cor=cor)
+    digest = _digestao(semente)
+    cor = PALETA_AVATAR[digest % len(PALETA_AVATAR)]
+    # Fatia diferente do mesmo digest: `digest % len(PALETA)` ja consumiu a
+    # ponta baixa, e reusa-la faria cor e classe andarem juntas — dois
+    # treinadores de mesma cor sairiam sempre com o mesmo retrato.
+    classe = CLASSES_DE_TREINADOR[(digest >> 16) % len(CLASSES_DE_TREINADOR)]
+    return Avatar(iniciais=_iniciais(semente), cor=cor, classe=classe)
 
 
 def gerar_treinador(rng: GeradorAleatorio) -> TreinadorGerado:

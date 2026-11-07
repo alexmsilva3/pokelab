@@ -36,8 +36,16 @@ class TimeEntrada(BaseModel):
 
 
 class AvatarLer(BaseModel):
+    """O retrato do treinador.
+
+    `sprite` e anulavel de proposito: treinadores gravados antes das classes
+    existirem nao tem `classe` no JSONB, e a interface cai nas iniciais sobre
+    a cor — que sempre estiveram la e continuam sendo o retrato de base.
+    """
+
     iniciais: str
     cor: str
+    sprite: str | None = None
 
 
 class TrainerResumo(BaseModel):

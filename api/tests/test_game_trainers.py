@@ -17,6 +17,7 @@ import pytest
 from app.game import balance
 from app.game.erros import AvatarInvalido, ErroDeDominio, ExperienciaInvalida
 from app.game.trainers import (
+    CLASSES_DE_TREINADOR,
     NOMES_DE_TREINADOR,
     PALETA_AVATAR,
     Avatar,
@@ -76,7 +77,11 @@ def test_avatar_de_nome_composto_usa_primeira_e_ultima_inicial():
 
 def test_avatar_e_serializavel():
     avatar = gerar_avatar("Kai")
-    assert avatar.para_dicionario() == {"iniciais": "KA", "cor": avatar.cor}
+    assert avatar.para_dicionario() == {
+        "iniciais": "KA",
+        "cor": avatar.cor,
+        "classe": avatar.classe,
+    }
 
 
 def test_avatar_e_imutavel():
@@ -134,10 +139,30 @@ def test_cor_do_avatar_e_estavel_entre_processos():
 
 
 def test_avatar_declarado_diretamente_mantem_o_contrato():
-    assert Avatar(iniciais="AB", cor="#1f7a3f").para_dicionario() == {
+    assert Avatar(iniciais="AB", cor="#1f7a3f", classe="youngster").para_dicionario() == {
         "iniciais": "AB",
         "cor": "#1f7a3f",
+        "classe": "youngster",
     }
+
+
+def test_a_classe_sai_do_catalogo_e_e_estavel():
+    for nome in ("Kai", "Milo", "Pat", "Jordan", "Yuki"):
+        avatar = gerar_avatar(nome)
+        assert avatar.classe in CLASSES_DE_TREINADOR
+        assert gerar_avatar(nome).classe == avatar.classe
+
+
+def test_o_sprite_aponta_para_o_acervo_de_treinadores():
+    assert gerar_avatar("Kai").sprite == f"treinadores/{gerar_avatar('Kai').classe}.png"
+
+
+def test_cor_e_classe_nao_andam_juntas():
+    # Saem do mesmo digest, de fatias diferentes: se andassem juntas, todo
+    # treinador de uma cor teria sempre o mesmo retrato.
+    pares = {(gerar_avatar(n).cor, gerar_avatar(n).classe) for n in NOMES_DE_TREINADOR}
+    cores = {cor for cor, _ in pares}
+    assert len(pares) > len(cores)
 
 
 # --- Status (SDD 3.2 e invariante 3) ----------------------------------------

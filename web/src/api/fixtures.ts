@@ -247,7 +247,7 @@ export function itensExemplo(sobrescritas: Partial<RespostaItens> = {}): Respost
 export function avatarTreinadorExemplo(
   sobrescritas: Partial<AvatarTreinador> = {},
 ): AvatarTreinador {
-  return { iniciais: 'AS', cor: '#2563a8', ...sobrescritas }
+  return { iniciais: 'AS', cor: '#2563a8', sprite: 'treinadores/youngster.png', ...sobrescritas }
 }
 
 export function treinadorResumoExemplo(

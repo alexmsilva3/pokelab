@@ -472,6 +472,7 @@ button:disabled {
 }
 
 .avatar-treinador {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -480,6 +481,20 @@ button:disabled {
   border-radius: 50%;
   color: var(--cor-acento-texto);
   font-weight: 600;
+  overflow: hidden;
+}
+
+/* O sprite cobre as iniciais em vez de substitui-las: acervo nao montado ou
+   arquivo faltando deixa a imagem quebrada, e as iniciais aparecem por baixo.
+   image-rendering: pixelated porque o original e 80x80 de pixel art — suavizar
+   borraria o desenho. */
+.avatar-treinador-sprite {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
 }
 
 .montar-time {

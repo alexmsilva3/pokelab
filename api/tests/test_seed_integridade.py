@@ -13,6 +13,8 @@ from typing import Any
 
 import pytest
 
+from app.game import trainers as trainers_dominio
+
 RAIZ = Path(__file__).resolve().parent.parent.parent
 DIR_SEED = RAIZ / "data" / "seed"
 DIR_SPRITES = RAIZ / "data" / "sprites"
@@ -359,3 +361,39 @@ def test_local_inicial_do_balance_existe(locais):
     from app.game.balance import LOCAL_INICIAL_ID
 
     assert LOCAL_INICIAL_ID in {local["id"] for local in locais}
+
+
+def test_toda_classe_do_catalogo_tem_sprite_no_acervo():
+    """O catalogo e o acervo nao podem divergir em silencio.
+
+    `CLASSES_DE_TREINADOR` nomeia arquivos; se um sumir da pasta, o treinador
+    que sorteou aquela classe fica com a imagem quebrada — e nada no servidor
+    reclama, porque o dominio so monta um caminho. Ja aconteceu: um script de
+    organizacao apagou quinze sprites e o catalogo seguiu apontando para eles.
+    """
+    acervo = RAIZ / "data" / "sprites" / "treinadores"
+
+    faltando = [
+        classe for classe in trainers_dominio.CLASSES_DE_TREINADOR
+        if not (acervo / f"{classe}.png").is_file()
+    ]
+
+    assert not faltando, f"classes sem sprite no acervo: {faltando}"
+
+
+def test_o_catalogo_nao_esquece_sprite_disponivel():
+    """O outro lado: sprite na pasta que ninguem sorteia e peso morto.
+
+    Nao e erro grave — e por isso a mensagem diz o que fazer em vez de so
+    falhar —, mas um acervo que cresce sem o catalogo crescer junto vira
+    arquivo esquecido no repositorio.
+    """
+    acervo = RAIZ / "data" / "sprites" / "treinadores"
+    no_disco = {p.stem for p in acervo.glob("*.png")}
+
+    orfaos = sorted(no_disco - set(trainers_dominio.CLASSES_DE_TREINADOR))
+
+    assert not orfaos, (
+        f"sprites fora do catalogo: {orfaos}. "
+        "Acrescente ao FIM de CLASSES_DE_TREINADOR, ou mova para notaveis/."
+    )

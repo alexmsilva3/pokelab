@@ -85,11 +85,30 @@ def _poder_do_treinador(treinador: Treinador, agora: datetime, escala: float) ->
     )
 
 
+def _avatar_para_ler(gravado: dict) -> AvatarLer:
+    """Traduz o avatar do JSONB para o contrato.
+
+    A coluna guarda `classe` (o identificador da classe de treinador); a API
+    devolve `sprite` (o caminho sob /sprites). Sao coisas diferentes de
+    proposito: a coluna guarda o FATO, e o caminho e como esse fato e servido
+    hoje — mudar o layout do acervo nao deveria exigir migracao de dados.
+
+    Avatar gravado antes das classes existirem nao tem a chave; `sprite` sai
+    nulo e a interface desenha as iniciais sobre a cor, como sempre fez.
+    """
+    classe = gravado.get("classe")
+    return AvatarLer(
+        iniciais=gravado["iniciais"],
+        cor=gravado["cor"],
+        sprite=f"treinadores/{classe}.png" if classe else None,
+    )
+
+
 def _campos_comuns(treinador: Treinador, agora: datetime, escala: float) -> dict:
     return {
         "id": treinador.id,
         "nome": treinador.nome,
-        "avatar": AvatarLer(**treinador.avatar),
+        "avatar": _avatar_para_ler(treinador.avatar),
         "nivel": treinador.nivel,
         "experiencia": treinador.experiencia,
         "status": treinador.status,

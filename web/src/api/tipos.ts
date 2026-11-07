@@ -204,6 +204,12 @@ export interface RespostaItens {
 export interface AvatarTreinador {
   iniciais: string
   cor: string
+  /**
+   * Caminho do sprite da classe de treinador sob /sprites, quando ha.
+   * Nulo para treinador gravado antes das classes existirem — a interface
+   * cai nas iniciais sobre a cor, que sempre foram o retrato de base.
+   */
+  sprite: string | null
 }
 
 /** Os quatro estados do treinador (SDD 3.2), no mesmo nome da coluna. */
