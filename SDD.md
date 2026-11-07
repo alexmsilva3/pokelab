@@ -873,6 +873,7 @@ A forma exata dessas duas é parte do experimento, não premissa. O que não pod
 | 10.6 | Revisão de segurança: escopo por laboratório em toda rota, sem IDOR | `pokelab-test` | `security-review` |
 | 10.7 | **Revisão de escopo de evolução** (questão 17): decidir o destino das 100 espécies que não evoluem por nível — pedra, troca e amizade. Levantar quantas estão afetadas por grupo, o custo de cada mecânica e o impacto na Pokédex, e registrar a decisão em ADR | `pokelab-architect` | `pokelab-domain-rules` |
 | 10.8 | **Especificação da loja pós-v1** (questão 19): a moeda já acumula na v1 e vai comprar Poções, Pokébolas e treinadores. Levantar preços a partir dos dados de calibragem da Fase 9 e registrar em ADR, sem implementar | `pokelab-architect` | `pokelab-domain-rules` |
+| 10.9 | **Carga visível na expedição em curso**: o cartão mostra o destino, o tempo e nada do que o treinador levou. `ExpedicaoLer.carga` já vem no contrato com `quantidade_levada` e `quantidade_consumida` — é só desenhar. Importa porque a carga é metade da decisão do despacho e some de vista no instante em que ela passa a valer | `pokelab-frontend` | `pokelab-ui-kit` |
 
 **Pronto quando:** uma pessoa que nunca viu o projeto completa o loop sem instrução, e as decisões adiadas estão registradas em ADR.
 
