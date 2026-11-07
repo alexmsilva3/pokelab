@@ -950,21 +950,43 @@ A moeda já é paga pelas entregas (Fase 8) e não compra nada na v1. Vai compra
 
 A expansão do viveiro é provavelmente a primeira compra que o jogador vai querer, e por isso merece cuidado: ela é a válvula que alivia a pressão que a Central de Entregas cria. Barata demais e o limite de 50 nunca é sentido; cara demais e o professor fica entalado sem saber o que fazer. O número sai da Fase 9, junto com a renda por entrega.
 
-### 10.4 Intervir na expedição em curso
+### 10.4 Acompanhar a expedição em curso
 
-Soltar um Pokémon no meio da expedição para abrir vaga na bagagem, ou trocar a carga, ou mandar o treinador voltar antes. Hoje nada disso é possível, e não por falta de botão.
+Ver o que o treinador já fez enquanto ele ainda está em campo: as batalhas travadas até agora, o que capturou, o desgaste do time. Hoje a expedição é um envelope lacrado — só o cronômetro se mexe.
 
-Enquanto a expedição corre não existe estado parcial: o despacho grava semente, duração, dificuldade e poder, e **nenhum encontro é calculado**. A resolução inteira acontece no instante do claim, a partir da semente. Não há quatro Pidgey na bagagem para soltar — há uma semente que, quando for lida, dirá que houve quatro.
+**É barato, e a razão é que `resolver()` é puro.** Ele não tem efeito nenhum: dá a mesma resposta toda vez que roda, em milissegundos, a partir da semente e do retrato do envio. Então acompanhar é uma leitura:
 
-Ter isso exige **resolução incremental**: calcular os eventos até agora a cada leitura, persistir o parcial, e deixar a intervenção do professor entre dois pedaços mudar os pedaços seguintes. O preço é alto e cai todo no que mais custou a assentar — a resolução atômica e idempotente do Artigo VII e do ADR-006 viraria uma sequência de resoluções parciais, cada uma com lock e idempotência próprios, e toda leitura voltaria a ser escrita, contrariando o ADR-006.
+```
+decorridos = minutos entre started_at e agora, na escala do jogo
+relatorio  = resolver(contexto, gerador(seed))        # inteiro, descartável
+visivel    = [e for e in relatorio.eventos if e.ocorrido_em_minuto <= decorridos]
+```
 
-Antes de pagar isso, medir se o problema é grande: a tarefa de relatório da Fase 8 passa a marcar quando a bagagem encheu, e a Fase 9 vai dizer com que frequência isso acontece de fato. Pode ser que a decisão no despacho — time menor por mais bagagem — já resolva.
+Nada é gravado. O ADR-006 continua de pé — a rota é leitura e não escreve. O Artigo VII não é tocado, porque resolução nenhuma aconteceu. O invariante 19 segue valendo sem precisar ser consultado: o resultado continua sendo função da semente e do envio, e o claim segue sendo o único momento em que ele vira fato.
 
-### 10.5 Evolução fora do nível
+Três coisas a resolver antes de implementar:
+
+**O futuro não pode vazar.** O servidor calcula o relatório inteiro e manda só o pedaço vencido. Mandar a coisa toda e truncar no cliente entregaria o final da expedição a quem abrisse o DevTools, e o Artigo II já diz que o cliente não decide — aqui ele também não pode saber. É exatamente o tipo de defeito que a lente de vazamento existe para pegar.
+
+**A distribuição do tempo precisa ser real.** `ocorrido_em_minuto` hoje espalha os eventos pela duração, mas com `EXPEDITION_TIME_SCALE` em 0.01 a duração inteira é um minuto e tudo colapsa no zero — acompanhar não mostraria nada. Em tempo real funciona; em desenvolvimento exigiria duração em segundos, que é uma limitação já conhecida do ADR-004.
+
+**Custo por consulta.** Resolver a cada poll é barato por expedição e deixa de ser com muitas expedições e polling curto. Memoizar por `(expedicao_id, minuto)` resolve: dentro do mesmo minuto a resposta não muda.
+
+E uma consequência de desenho a decidir, não técnica: acompanhar dá sentido novo ao aborto. Vendo que a bagagem encheu no minuto 12, o professor pode cortar as perdas e trazer o treinador de volta. Isso é uma decisão de verdade, e provavelmente boa — mas transforma o aborto de "mudei de ideia" em "espiei e não gostei", e vale saber disso antes, não depois.
+
+### 10.5 Intervir na expedição em curso
+
+Soltar um Pokémon no meio para abrir vaga na bagagem, trocar a carga, mandar o treinador voltar antes. Esta é a metade cara, e é cara por um motivo preciso.
+
+Acompanhar (10.4) é ler uma função pura. Intervir faz os eventos **seguintes** dependerem de uma escolha do professor no meio — e aí a resolução deixa de ser uma função da semente e do envio, e passa a ser uma sequência de resoluções parciais, cada uma com lock e idempotência próprios, cada uma gravando estado intermediário. É o Artigo VII e o ADR-006 desmontados: toda leitura volta a ser escrita.
+
+Antes de pagar isso, medir se o problema existe. O evento de bagagem cheia (Fase 8) vai mostrar com que frequência uma expedição desperdiça encontros, e a Fase 9 dirá se é comum. Pode ser que a decisão no despacho — time menor por mais bagagem — já resolva, e que acompanhar sozinho dê quase todo o valor por quase nada.
+
+### 10.6 Evolução fora do nível
 
 As 100 espécies que não evoluem por nível: pedra, troca e amizade. Levantamento na tarefa 10.7 (questão 17).
 
-### 10.6 Mapa de distribuição de espécies
+### 10.7 Mapa de distribuição de espécies
 
 `PokedexAvistamento` acumula desde a Fase 7 onde cada espécie foi vista. Falta exibir — camada no mapa, janela própria, ou filtro na escolha do destino (questão 23).
 
