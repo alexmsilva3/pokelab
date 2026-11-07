@@ -195,8 +195,8 @@ O nível do laboratório não é decorativo: ele define `limite_treinadores`, e 
 17. Uma expedição exige um treinador com **ao menos um Pokémon no time**.
 18. Um Pokémon em expedição não recupera HP; a recuperação passiva só corre no laboratório.
 19. O resultado de uma expedição é função apenas da semente e do estado gravado no envio.
-20. O viveiro comporta no máximo `CAPACIDADE_VIVEIRO` Pokémon; conta quem tem `treinador_id` nulo.
-21. Uma expedição nunca pode trazer mais capturas do que havia lugar no viveiro no momento do despacho.
+20. O viveiro tem `CAPACIDADE_VIVEIRO` lugares e conta quem tem `treinador_id` nulo, mas **pode transbordar**: capturas de uma expedição entram mesmo sem lugar.
+21. Com o viveiro acima da capacidade, nenhuma expedição nova parte. Reclamar relatório, entregar e soltar seguem liberados.
 22. Uma entrega não aceita até `expira_em` deixa de ser aceitável; a expiração é derivada do relógio, nunca gravada.
 23. Repor vaga aberta por expiração ou aceite não consome o intervalo de regeração.
 24. Um Pokémon em expedição ou comprometido com uma entrega não pode ser solto.
@@ -344,7 +344,7 @@ Só há tentativa de captura após vitória, e só se restar Pokébola na carga 
 
 ```
 capacidade_bagagem = CAPACIDADE_TOTAL_TREINADOR - tamanho_do_time
-slots_captura      = min(pokebolas_na_carga, capacidade_bagagem, espaco_livre_no_viveiro)
+slots_captura      = min(pokebolas_na_carga, capacidade_bagagem)
 
 p_captura = clamp(
     (taxa_captura / 255)
@@ -356,7 +356,7 @@ p_captura = clamp(
 
 Multiplicadores: Pokébola 1.0, Great Ball 1.5, Ultra Ball 2.0. Sucesso gera `CAPTURA`, consome a bola, cria a `PokemonInstancia` no laboratório ao fim da expedição e marca a Pokédex. Falha gera `CAPTURA_FALHA` e consome a bola.
 
-**O número de Pokémon capturáveis por expedição é limitado por `slots_captura`**: Pokébolas na mochila, espaço livre na bagagem e lugar no viveiro (4.10). Com `CAPACIDADE_TOTAL_TREINADOR = 6`, um treinador com time cheio traz até 3 capturas; um treinador com um único Pokémon traz até 5 — desde que haja onde guardar.
+**O número de Pokémon capturáveis por expedição é limitado por `slots_captura`**: espaço livre na bagagem e Pokébolas na mochila. Com `CAPACIDADE_TOTAL_TREINADOR = 6`, um treinador com time cheio traz até 3 capturas; um treinador com um único Pokémon traz até 5. O viveiro **não** limita a captura — ele transborda e cobra depois (4.10).
 
 Esse é um trade-off deliberado e não um efeito colateral. Time grande vence mais encontros e captura menos; time pequeno arrisca a expedição inteira em troca de capacidade. O professor escolhe entre render experiência e render Pokémon, e a escolha é dele a cada despacho.
 
@@ -445,23 +445,20 @@ Os Pokémon que não estão no time de ninguém ficam no **viveiro** do laborat�
 
 O viveiro tem `CAPACIDADE_VIVEIRO` lugares, 50 na v1. Ocupam lugar os Pokémon com `treinador_id` nulo; os que estão num time viajam com o treinador e não contam. Um Pokémon comprometido com uma entrega continua ocupando o lugar dele até a entrega ser concluída — ele ainda está lá.
 
-**O limite morde na captura, não no retorno.** O número de capturas de uma expedição passa a ser:
+**O limite não morde na captura.** O treinador captura até onde a mochila e a bagagem deixam — `slots_captura = min(pokebolas_na_carga, capacidade_bagagem)`, sem nenhuma terceira trava. Três expedições podem voltar com cinco Pokémon cada para um viveiro com dois lugares, e **voltam mesmo**.
 
-```
-slots_captura = min(pokebolas_na_carga, capacidade_bagagem, espaco_livre_no_viveiro)
-```
+Travar no despacho seria proteger o professor de uma decisão que é o ponto do sistema. A escassez só é sentida se ele tiver de olhar para catorze Rattata e escolher. Uma trava que impedisse o excesso de existir transformaria a decisão em ausência de decisão: o treinador voltaria de mãos vazias, o professor não saberia por quê, e o limite de 50 seria um número que nunca dói.
 
-Calculado **no despacho**, como tudo que alimenta a resolução (invariante 19), e o espaço considerado desconta o que as expedições já em curso podem trazer:
+**O viveiro transborda, e transbordado trava o despacho.** O relatório é reclamado normalmente, as capturas entram, e a ocupação passa de `CAPACIDADE_VIVEIRO`. Enquanto estiver acima dela:
 
-```
-espaco_livre_no_viveiro = CAPACIDADE_VIVEIRO
-                        - pokemon_no_viveiro
-                        - soma dos slots_captura das expedições em curso
-```
+- **nenhuma expedição nova parte** — é a ação que cria mais Pokémon, e é ela que fica barrada;
+- reclamar relatório continua liberado, inclusive afundando mais a ocupação. O treinador já voltou; prendê-lo em campo por falta de espaço no laboratório seria punir duas vezes;
+- aceitar e concluir entrega continua liberado, porque entrega é dreno;
+- soltar continua liberado, que é a saída rápida.
 
-Essa reserva é o que impede três expedições simultâneas de voltarem juntas com mais Pokémon do que cabe. A alternativa — recusar a captura na hora de reclamar o relatório — foi descartada: o relatório já teria anunciado a captura e consumido a Pokébola, e desmentir o próprio relatório é a pior coisa que este sistema pode fazer.
+Para voltar a despachar, o professor solta ou entrega até caber. A porta que fecha é a de criar mais, nunca a de resolver o que já existe.
 
-Cheio o viveiro, o treinador **para de capturar e continua registrando** na Pokédex, exatamente como já acontece com a bagagem cheia (invariante 11). O relatório diz qual dos dois limites mordeu.
+Isso preserva o invariante 19 inteiro. O **resultado da expedição** — quantos foram capturados, quais, de que nível — continua sendo função apenas da semente e do estado gravado no envio. O que o professor faz com eles depois é decisão dele, posterior e separada, e não reescreve nada do relatório.
 
 **Soltar.** O professor pode devolver um Pokémon à natureza, do viveiro ou do time de um treinador. Não rende nada — nem moeda, nem experiência, nem item. É só espaço de volta.
 
@@ -768,12 +765,12 @@ Esta é a fase de maior risco técnico e a que define o jogo. Nenhuma tarefa aqu
 
 Depende da Fase 7: a entrega só faz sentido quando existem Pokémon capturados para entregar. O **viveiro** (4.10) entra aqui junto, porque é ele que dá à entrega o segundo motivo de existir — sem limite de guarda, escoar Pokémon é só uma troca por moeda.
 
-Esta fase **volta ao código da Fase 7**: `slots_captura` passa a considerar o espaço livre no viveiro, e isso toca `game/capture.py`, o `ContextoDeResolucao` e o despacho. É alteração de regra num motor já fechado e testado — tarefa 8.1 por isso, antes de tudo.
+Esta fase **não toca o motor da Fase 7**. O viveiro não limita a captura: ele transborda e cobra no despacho seguinte (4.10), então `slots_captura`, o `ContextoDeResolucao` e a resolução ficam como estão. A guarda nova mora no despacho, que é código desta fase.
 
 | # | Tarefa | Agente | Skills |
 |---|---|---|---|
-| 8.1 | **Viveiro**: `CAPACIDADE_VIVEIRO` em `balance.py`, ocupação e espaço livre com reserva das expedições em curso, `slots_captura` com o terceiro limite (4.10). Toca a Fase 7 | `pokelab-domain` | `pokelab-domain-rules` |
-| 8.2 | Recusa de despacho e evento de relatório quando o viveiro está cheio, distinguindo do limite de bagagem | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.1 | **Viveiro**: `CAPACIDADE_VIVEIRO` em `balance.py`, ocupação, e a regra de transbordo (4.10) | `pokelab-domain` | `pokelab-domain-rules` |
+| 8.2 | Guarda do despacho com o viveiro transbordado (invariante 21), com erro próprio dizendo quantos lugares faltam. Reclamar, entregar e soltar seguem liberados | `pokelab-domain` | `pokelab-domain-rules` |
 | 8.3 | **Soltar**: invariantes 24 e 25 no domínio — não solta quem está em expedição ou comprometido, e nunca solta a última criatura do laboratório | `pokelab-domain` | `pokelab-domain-rules` |
 | 8.4 | `GET /ranch`: ocupação, capacidade e o que está guardado; ocupação no resumo do laboratório | `pokelab-api` | `pokelab-api-conventions` |
 | 8.5 | `DELETE /pokemon/{id}`: solta o Pokémon do viveiro ou do time, sem recompensa, mantendo a Pokédex intacta | `pokelab-api` | `pokelab-api-conventions` |
@@ -786,14 +783,14 @@ Esta fase **volta ao código da Fase 7**: `slots_captura` passa a considerar o e
 | 8.12 | `POST /deliveries/{id}/accept`: recebe **os Pokémon escolhidos pelo professor**, recusa pedido expirado, valida espécie, quantidade e disponibilidade no viveiro, compromete os Pokémon, ocupa o treinador, grava `eta` | `pokelab-api` | `pokelab-domain-rules` |
 | 8.13 | `POST /deliveries/{id}/claim`: remove em definitivo os Pokémon entregues, credita moedas e experiência, libera o treinador e o lugar no viveiro | `pokelab-api` | `pokelab-domain-rules` |
 | 8.14 | Claim explícito e idempotente, no mesmo padrão da expedição (ADR-006 e Artigo VII). **Primeira operação destrutiva do jogo** — resolver duas vezes apagaria Pokémon que não deviam sair | `pokelab-api` | `pokelab-api-conventions` |
-| 8.15 | Tela do viveiro: ocupação, lista do que está guardado, aviso quando a captura vai ser limitada por falta de lugar, e **soltar com confirmação nomeando quem vai embora** | `pokelab-frontend` | `pokelab-ui-kit` |
+| 8.15 | Tela do viveiro: ocupação, lista do que está guardado, aviso claro quando está transbordado — quantos lugares faltam e que o despacho está travado até caber — e **soltar com confirmação nomeando quem vai embora** | `pokelab-frontend` | `pokelab-ui-kit` |
 | 8.16 | Tela Central de Entregas: pedidos com requisito, destino, duração estimada, recompensa e **quanto falta para o pedido vencer**; botão de repor e botão de regerar, com o tempo restante de cada um | `pokelab-frontend` | `pokelab-ui-kit` |
 | 8.17 | Seleção dos Pokémon no aceite, com confirmação explícita nomeando quem sai do laboratório para sempre | `pokelab-frontend` | `pokelab-ui-kit` |
-| 8.18 | Testes do viveiro: captura limitada pelo lugar; três expedições simultâneas não estouram a capacidade; entrega devolve lugar; soltar devolve lugar e não paga nada; soltar Pokémon em expedição ou comprometido recusado; soltar a última criatura do laboratório recusado; Pokédex sobrevive ao soltar | `pokelab-test` | — |
+| 8.18 | Testes do viveiro: três expedições voltam com mais Pokémon do que cabe e **todos entram**; transbordado, o despacho é recusado e reclamar, entregar e soltar continuam liberados; soltar devolve lugar e não paga nada; soltar Pokémon em expedição ou comprometido recusado; soltar a última criatura do laboratório recusado; Pokédex sobrevive ao soltar | `pokelab-test` | — |
 | 8.19 | Testes do prazo: pedido vence sozinho sem nenhuma escrita no banco; pedido expirado não pode ser aceito; repor vaga expirada não espera os 15 minutos; descartar pedido válido continua esperando | `pokelab-test` | — |
 | 8.20 | Testes da entrega: pedido com 4 espécies rejeitado na geração; aceite com Pokémon que não atende ao pedido rejeitado; Pokémon comprometido fora de time e de expedição; claim concorrente não apaga Pokémon duas vezes | `pokelab-test` | — |
 
-**Pronto quando:** o professor vê o viveiro encher, escolhe quais Pokémon manda numa entrega, perde esses Pokémon, ganha moeda e experiência de laboratório, recupera o lugar no viveiro, e o treinador fica indisponível durante a viagem. Um pedido que ninguém aceitou vence sozinho e dá lugar a outro, e o professor pode soltar o que não quer guardar.
+**Pronto quando:** o professor vê o viveiro transbordar e tem de escolher quem solta para voltar a despachar, escolhe quais Pokémon manda numa entrega, perde esses Pokémon, ganha moeda e experiência de laboratório, recupera o lugar no viveiro, e o treinador fica indisponível durante a viagem. Um pedido que ninguém aceitou vence sozinho e dá lugar a outro, e o professor pode soltar o que não quer guardar.
 
 ---
 
